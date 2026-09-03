@@ -1,0 +1,7 @@
+# allow crawling everything by default
+User-agent: *
+Disallow:
+
+# Content sites: uncomment once the domain exists (dashboards: delete
+# src/routes/sitemap.xml/ instead)
+# Sitemap: https://CHANGEME-domain/sitemap.xml

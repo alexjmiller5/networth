@@ -1,0 +1,7 @@
+# CHANGEME Site Name
+
+> CHANGEME: one-sentence description of what this site is and does.
+
+## Pages
+
+- [Home](/): CHANGEME what's here
