@@ -204,7 +204,6 @@ not a script catalog; one-offs go in `scripts/` and run directly.
 | `just check` / `just fmt` | wrangler types + svelte-check + prettier / auto-fix            |
 | `just build`              | Production build                                               |
 | `just logs`               | `wrangler tail` on the deployed Worker                         |
-| `just sync-secrets`       | Push `.env.tpl` → Worker secrets                               |
 | `just deploy`             | test + build + `wrangler deploy` — CI's job, not yours (below) |
 
 **Deploying = commit + push to `main`.** The GHA deploy workflow runs tests,
