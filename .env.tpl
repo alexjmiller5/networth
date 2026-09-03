@@ -4,7 +4,6 @@
 # Local dev:      op run --env-file=.env.tpl -- bun run dev
 # Push to CF:     just sync-secrets
 #
-# CHANGEME — one line per secret. ALL of this app's env vars are fields of
-# ONE item titled "<Project> ENV" in the project vault (field name = var name):
-#   VAR_NAME=op :// <Vault> / <Project> ENV / VAR_NAME   <- remove the spaces;
-#   spelled out because a literal reference in a comment breaks `op inject`.
+#
+# networth has no runtime secrets: data comes from the life-data hub at run
+# time (token wired in a later phase) and CI deploy creds live in deploy.yml.

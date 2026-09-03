@@ -34,7 +34,3 @@ jobs:
       - run: bun run test
       - run: bun run build
       - run: bunx wrangler deploy
-      # Secrets AFTER deploy — `wrangler secret put` needs the Worker to exist.
-      # Delete this step + scripts/sync-secrets.sh if the site has no secrets.
-      - name: Push Worker secrets
-        run: ./scripts/sync-secrets.sh
