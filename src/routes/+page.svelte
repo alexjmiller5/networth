@@ -446,7 +446,7 @@
 			data={chartData}
 			{bucket}
 			{kind}
-			net={flowMode === 'both'}
+			net={flowMode === 'both' && groupBy === 'category'}
 			{labelFor}
 			slotFor={(k) => slotOf.get(k) ?? -1}
 			iconFor={groupBy === 'category' ? categoryIconUrl : undefined}
