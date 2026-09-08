@@ -18,6 +18,14 @@ Common extras:
                                                 manifest paths iOS fetches without
                                                 cookies (else the homescreen icon
                                                 degrades to a letter monogram)
+  --public-path /api/foo                        more cookie-less paths for that
+                                                bypass app (repeatable) - e.g. a
+                                                machine-polled status flag
+  --service-token <name>                        let a machine caller through with
+                                                an Access service token: created
+                                                once (client secret printed ONCE -
+                                                store it), then attached to the
+                                                app as a non_identity policy
   --dry-run                                     print the plan, change nothing
 
 Login is the Cloudflare identity provider (sign in with the Cloudflare account);
@@ -30,6 +38,7 @@ Account: CLOUDFLARE_ACCOUNT_ID env var, else the token's sole visible account.
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -59,8 +68,6 @@ def api_token() -> str:
 
 
 def unwrap(r: httpx.Response) -> dict | list:
-    if r.is_error:
-        print(f"Cloudflare API error {r.status_code}: {r.text}", file=sys.stderr)
     r.raise_for_status()
     body = r.json()
     if not body.get("success"):
@@ -68,7 +75,7 @@ def unwrap(r: httpx.Response) -> dict | list:
     return body["result"]
 
 
-def desired_app(name: str, uris: list[str], session: str, idp: str, policy: dict) -> dict:
+def desired_app(name: str, uris: list[str], session: str, idp: str, *policies: dict) -> dict:
     """The full app body we want Cloudflare to hold. Pure - safe to diff/print."""
     return {
         "name": name,
@@ -79,7 +86,7 @@ def desired_app(name: str, uris: list[str], session: str, idp: str, policy: dict
         # One allowed IdP means there is nothing to choose - skip the chooser.
         "auto_redirect_to_identity": True,
         "app_launcher_visible": True,
-        "policies": [policy],
+        "policies": list(policies),
     }
 
 
@@ -92,8 +99,37 @@ def drifted(want: dict, have: dict) -> bool:
         d["uri"] for d in have.get("destinations") or []
     ]:
         return True
-    w, h = want["policies"][0], (have.get("policies") or [{}])[0]
-    return (w["decision"], w["include"]) != (h.get("decision"), h.get("include"))
+    return [(p["decision"], p["include"]) for p in want["policies"]] != [
+        (p.get("decision"), p.get("include")) for p in have.get("policies") or []
+    ]
+
+
+def service_token_policy(c: httpx.Client, account: str, name: str, dry_run: bool) -> dict:
+    """Find or create the named Access service token; return its non_identity
+    policy. The client secret is only readable at creation - it is printed once,
+    on stderr, for the caller to store (1Password)."""
+    tokens = unwrap(c.get(f"{API}/accounts/{account}/access/service_tokens", params={"per_page": 100}))
+    tok = next((t for t in tokens if t["name"] == name), None)
+    if tok is None:
+        if dry_run:
+            print(f"WOULD CREATE service token '{name}'")
+            tok = {"id": "<pending>"}
+        else:
+            tok = unwrap(
+                c.post(
+                    f"{API}/accounts/{account}/access/service_tokens",
+                    json={"name": name, "duration": "87600h"},
+                )
+            )
+            print(f"created service token '{name}' - store these now, the secret is shown ONCE:", file=sys.stderr)
+            print(json.dumps({"clientId": tok["client_id"], "clientSecret": tok["client_secret"]}))
+    else:
+        print(f"service token '{name}' exists (client id {tok['client_id']})", file=sys.stderr)
+    return {
+        "name": f"{name} - service token",
+        "decision": "non_identity",
+        "include": [{"service_token": {"token_id": tok["id"]}}],
+    }
 
 
 def upsert(c: httpx.Client, account: str, apps: list, want: dict, dry_run: bool) -> None:
@@ -123,6 +159,8 @@ def main() -> None:
     ap.add_argument("--email", action="append", required=True, dest="emails")
     ap.add_argument("--session", default="730h", help="session duration (default 1 month)")
     ap.add_argument("--pwa", action="store_true", help="also bypass the cookie-less PWA assets")
+    ap.add_argument("--public-path", action="append", default=[], dest="public_paths")
+    ap.add_argument("--service-token", help="name of an Access service token to admit")
     ap.add_argument("--idp", default="cloudflare", help="IdP type: cloudflare or onetimepin")
     ap.add_argument("--dry-run", action="store_true", help="print the plan, change nothing")
     args = ap.parse_args()
@@ -144,34 +182,33 @@ def main() -> None:
 
     apps = unwrap(c.get(f"{API}/accounts/{account}/access/apps", params={"per_page": 100}))
 
+    policies = [
+        {
+            "name": f"{args.name} - allowed people",
+            "decision": "allow",
+            "include": [{"email": {"email": e}} for e in args.emails],
+        }
+    ]
+    if args.service_token:
+        policies.append(service_token_policy(c, account, args.service_token, args.dry_run))
+
     upsert(
         c,
         account,
         apps,
-        desired_app(
-            args.name,
-            args.domains,
-            args.session,
-            idp,
-            {
-                "name": f"{args.name} - allowed people",
-                "decision": "allow",
-                "include": [{"email": {"email": e}} for e in args.emails],
-            },
-        ),
+        desired_app(args.name, args.domains, args.session, idp, *policies),
         args.dry_run,
     )
 
-    if args.pwa:
+    public_paths = (PWA_PUBLIC_PATHS if args.pwa else []) + args.public_paths
+    if public_paths:
         upsert(
             c,
             account,
             apps,
             desired_app(
                 f"{args.name} - public assets",
-                # Primary domain only: preview URLs are never installed as PWAs,
-                # and Access caps destinations per app (all domains x paths 400s).
-                [args.domains[0] + p for p in PWA_PUBLIC_PATHS],
+                [d + p for d in args.domains for p in public_paths],
                 args.session,
                 idp,
                 {
@@ -182,6 +219,7 @@ def main() -> None:
             ),
             args.dry_run,
         )
+    if args.pwa:
         print('PWA: set crossorigin="use-credentials" on the manifest <link>, then')
         print("     delete + re-add the homescreen app (iOS caches the icon at add-time)")
 
