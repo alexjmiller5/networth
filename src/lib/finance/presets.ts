@@ -5,6 +5,24 @@
 export const PRESET_LABELS = ['7D', '30D', '90D', '1Y', 'MTD', 'YTD', 'ALL'] as const;
 export type PresetLabel = (typeof PRESET_LABELS)[number];
 
+export function isDate(value: unknown): value is string {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+	const time = Date.parse(value);
+	return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+export function clampRange(
+	start: unknown,
+	end: unknown,
+	min: string,
+	max: string
+): { start: string; end: string } {
+	const clamp = (date: string) => (date < min ? min : date > max ? max : date);
+	const a = clamp(isDate(start) ? start : min);
+	const b = clamp(isDate(end) ? end : max);
+	return a <= b ? { start: a, end: b } : { start: b, end: a };
+}
+
 /** DST-safe calendar-day arithmetic on YYYY-MM-DD labels (UTC internally). */
 export function addDays(date: string, days: number): string {
 	const [y, m, d] = date.split('-').map(Number);
@@ -22,14 +40,15 @@ export function getPresetRange(
 	});
 	switch (label) {
 		case '7D':
-			return clamp(addDays(max, -7));
+			return clamp(addDays(max, -6));
 		case '30D':
-			return clamp(addDays(max, -30));
+			return clamp(addDays(max, -29));
 		case '90D':
-			return clamp(addDays(max, -90));
+			return clamp(addDays(max, -89));
 		case '1Y': {
 			const [y, m, d] = max.split('-');
-			return clamp(`${Number(y) - 1}-${m}-${d}`);
+			const anniversary = `${Number(y) - 1}-${m}-${d}`;
+			return clamp(isDate(anniversary) ? addDays(anniversary, 1) : `${Number(y) - 1}-03-01`);
 		}
 		case 'MTD':
 			return clamp(`${max.slice(0, 7)}-01`);

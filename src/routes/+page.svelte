@@ -1,144 +1,90 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Seo from '$lib/components/seo.svelte';
 	import BalanceChart from '$lib/components/BalanceChart.svelte';
 	import RangeSlider from '$lib/components/RangeSlider.svelte';
 	import * as Select from '$lib/components/ui/select';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
+	import { Input } from '$lib/components/ui/input';
+	import IconCalendarWeek from '@tabler/icons-svelte/icons/calendar-week';
+	import IconCalendarStats from '@tabler/icons-svelte/icons/calendar-stats';
+	import IconStack2 from '@tabler/icons-svelte/icons/stack-2';
+	import IconChartAreaFilled from '@tabler/icons-svelte/icons/chart-area-filled';
+	import IconChartBar from '@tabler/icons-svelte/icons/chart-bar';
+	import IconChartLine from '@tabler/icons-svelte/icons/chart-line';
+	import IconFilter from '@tabler/icons-svelte/icons/filter';
+	import IconChevronDown from '@tabler/icons-svelte/icons/chevron-down';
+	import IconArrowsDownUp from '@tabler/icons-svelte/icons/arrows-down-up';
+	import IconSum from '@tabler/icons-svelte/icons/sum';
+	import IconRefresh from '@tabler/icons-svelte/icons/refresh';
+	import IconHelp from '@tabler/icons-svelte/icons/help';
+	import IconBuildingBank from '@tabler/icons-svelte/icons/building-bank';
+	import IconWallet from '@tabler/icons-svelte/icons/wallet';
 	import {
-		IconCalendarWeek,
-		IconCalendarStats,
-		IconStack2,
-		IconChartAreaFilled,
-		IconChartBar,
-		IconFilter,
-		IconChevronDown,
-		IconArrowsDownUp,
-		IconSum
-	} from '@tabler/icons-svelte';
-	import { MOCK_ACCOUNTS, MOCK_POINTS, generateMockTxns } from '$lib/finance/mock';
-	import { categoryIcon, categoryIconUrl } from '$lib/finance/categoryIcons';
-	import { PRESET_LABELS, getPresetRange, type PresetLabel } from '$lib/finance/presets';
+		PRESET_LABELS,
+		clampRange,
+		getPresetRange,
+		isDate,
+		type PresetLabel
+	} from '$lib/finance/presets';
 	import {
-		accumulate,
-		bucketize,
-		deriveBalances,
-		differentiate,
-		flowSeries,
-		groupSeries,
-		type Bucket
-	} from '$lib/finance/series';
-	import { addDays } from '$lib/finance/presets';
-	import type { GroupBy, Txn } from '$lib/finance/types';
+		buildView,
+		controlParams,
+		FRIEND_PAID,
+		hasControlParams,
+		pointsAt,
+		readControls,
+		toggleHidden,
+		writeControls
+	} from '$lib/finance/controls';
+	import type { Bucket } from '$lib/finance/series';
+	import type { GroupBy } from '$lib/finance/types';
+	import type { Estate } from '$lib/finance/assemble';
 
-	const accounts = MOCK_ACCOUNTS;
-	const txns = generateMockTxns();
-	const minDate = txns.reduce((m, t) => (t.date < m ? t.date : m), txns[0].date);
-	const maxDate = txns.reduce((m, t) => (t.date > m ? t.date : m), txns[0].date);
-
-	// Control state persists across reloads (localStorage, like task-burndown
-	// and screentime-dashboard) and is deep-linkable (?chart=bar&bucket=month);
-	// URL params win over saved state, saved state wins over defaults. ssr is
-	// off so window/localStorage are always available.
-	const STORAGE_KEY = 'networth-ui';
-	const saved: Record<string, unknown> = (() => {
-		try {
-			return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-		} catch {
-			return {};
-		}
-	})();
+	let { data }: { data: Estate } = $props();
+	const accounts = $derived(data.accounts);
+	const categories = $derived(data.categories);
+	const dates = $derived(
+		[
+			...data.txns.flatMap((t) => [t.date, ...(t.shares ?? []).map((s) => s.date)]),
+			...data.points.map((p) => p.scrapedAt.slice(0, 10)),
+			...data.coverage.map((c) => c.asOf?.slice(0, 10))
+		]
+			.filter(isDate)
+			.sort()
+	);
+	const minDate = $derived(dates[0] ?? new Date().toISOString().slice(0, 10));
+	const maxDate = $derived(dates.at(-1) ?? minDate);
 	const params = new URLSearchParams(window.location.search);
-	const pick = <T,>(
-		param: string | null,
-		savedVal: unknown,
-		valid: (v: unknown) => v is T,
-		fallback: T
-	): T => (valid(param) ? param : valid(savedVal) ? savedVal : fallback);
-
-	const isPreset = (v: unknown): v is PresetLabel | '' =>
-		v === '' || (PRESET_LABELS as readonly string[]).includes(v as string);
-	// A saved custom range ('' preset) restores its dates; presets recompute.
-	const savedPreset = isPreset(saved.activePreset) ? saved.activePreset : '1Y';
-	const savedStart =
-		savedPreset === '' && typeof saved.dateStart === 'string' ? saved.dateStart : '';
-	const savedEnd = savedPreset === '' && typeof saved.dateEnd === 'string' ? saved.dateEnd : '';
-	let activePreset = $state<PresetLabel | ''>(
-		savedPreset === '' && (!savedStart || !savedEnd) ? '1Y' : savedPreset // guard corrupt saves
+	const deepLink = hasControlParams(params);
+	let storage: Storage | undefined;
+	try {
+		storage = window.localStorage;
+	} catch {
+		/* Browsing still works with storage disabled. */
+	}
+	let controls = $state(untrack(() => readControls(storage, params, minDate, maxDate)));
+	const initialControls = JSON.stringify(untrack(() => controls));
+	let edited = false;
+	const range = $derived(
+		controls.activePreset
+			? getPresetRange(controls.activePreset, minDate, maxDate)
+			: clampRange(controls.dateStart, controls.dateEnd, minDate, maxDate)
 	);
-	let dateStart = $state(savedStart);
-	let dateEnd = $state(savedEnd);
-	$effect(() => {
-		if (activePreset !== '') {
-			const r = getPresetRange(activePreset, minDate, maxDate);
-			dateStart = r.start;
-			dateEnd = r.end;
-		}
-	});
-
-	const isBucket = (v: unknown): v is Bucket => v === 'day' || v === 'week' || v === 'month';
-	const isGroupBy = (v: unknown): v is GroupBy =>
-		v === 'account' || v === 'bank' || v === 'type' || v === 'category';
-	let bucket = $state<Bucket>(pick(params.get('bucket'), saved.bucket, isBucket, 'day'));
-	let groupBy = $state<GroupBy>(pick(params.get('group'), saved.groupBy, isGroupBy, 'account'));
-	const isKind = (v: unknown): v is 'area' | 'bar' => v === 'area' || v === 'bar';
-	// Bars are the house default for time series (dashboards skill).
-	let kind = $state<'area' | 'bar'>(pick(params.get('chart'), saved.kind, isKind, 'bar'));
-	// Flow-direction lens: Spending, Income, or both (?flows=spending deep-
-	// links it). Both = the full picture (balances / signed flows); a single
-	// direction locks the chart to those txns, plotted positive.
-	const isFlows = (v: unknown): v is ('spending' | 'income')[] =>
-		Array.isArray(v) && v.length > 0 && v.every((f) => f === 'spending' || f === 'income');
-	const flowsParam = params.get('flows')
-		? (params.get('flows') ?? '').split(',').filter(Boolean)
-		: null;
-	let flows = $state<('spending' | 'income')[]>(
-		pick(null, flowsParam ?? saved.flows, isFlows, ['spending', 'income'])
+	const viewState = $derived({ ...controls, dateStart: range.start, dateEnd: range.end });
+	const view = $derived(buildView(data.txns, accounts, categories, viewState, data.coverage));
+	const groupBy = $derived(controls.groupBy);
+	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
+	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
+	let search = $state('');
+	const filterKeys = $derived(
+		view.keys.filter((k) => labelFor(k).toLocaleLowerCase().includes(search.toLocaleLowerCase()))
 	);
-	const flowMode = $derived<'spending' | 'income' | 'both'>(flows.length === 1 ? flows[0] : 'both');
-	// Per bucket vs Cumulative, always available. null = auto: account
-	// groupings default Cumulative (they're balances), flow modes default
-	// Per bucket. An explicit pick (?cum=1 / ?cum=0) overrides either way.
-	let cumulativeChoice = $state<boolean | null>(
-		params.get('cum') === '1'
-			? true
-			: params.get('cum') === '0'
-				? false
-				: typeof saved.cumulativeChoice === 'boolean'
-					? saved.cumulativeChoice
-					: null
-	);
-	// Series hidden from the chart (?hide=a,b deep-links a filtered cut).
-	const isStrings = (v: unknown): v is string[] =>
-		Array.isArray(v) && v.every((s) => typeof s === 'string');
-	let excluded = $state<string[]>(
-		params.get('hide')
-			? (params.get('hide') ?? '').split(',').filter(Boolean)
-			: isStrings(saved.excluded)
-				? saved.excluded
-				: []
-	);
+	const selectedPoints = $derived(pointsAt(data.points, viewState.dateEnd));
+	let refreshing = $state(false);
+	let refreshError = $state('');
 
-	// Persist every control on change.
-	$effect(() => {
-		localStorage.setItem(
-			STORAGE_KEY,
-			JSON.stringify({
-				activePreset,
-				dateStart,
-				dateEnd,
-				bucket,
-				groupBy,
-				kind,
-				flows,
-				cumulativeChoice,
-				excluded
-			})
-		);
-	});
-
-	const labelOf = new Map(accounts.map((a) => [a.id, a.name]));
 	const typeLabels: Record<string, string> = {
 		checking: 'Checking',
 		savings: 'Savings',
@@ -146,110 +92,80 @@
 		p2p: 'P2P',
 		brokerage: 'Brokerage',
 		ira: 'IRA',
-		'401k': '401(k)'
+		'401k': '401(k)',
+		cash: 'Cash',
+		stored_value: 'Stored value'
 	};
-	const labelFor = (key: string): string => labelOf.get(key) ?? typeLabels[key] ?? key;
-
-	const balances = $derived(
-		dateStart && dateEnd ? deriveBalances(txns, accounts, dateStart, dateEnd) : null
-	);
-	// The full key list for the current grouping, in stable order - drives
-	// both the filter dropdown and the color slots (an entity keeps its
-	// color no matter what is filtered out or how series get reordered).
-	// Every category shows - no "Other" folding (dashboards skill); the
-	// palette carries enough validated slots and icons disambiguate.
-	const categoryTotals = new Map<string, number>();
-	for (const t of txns) {
-		if (t.category && !t.internal)
-			categoryTotals.set(t.category, (categoryTotals.get(t.category) ?? 0) + Math.abs(t.amount));
+	function labelFor(key: string): string {
+		if (key === FRIEND_PAID) return 'Friend-paid';
+		return groupBy === 'account'
+			? (accounts.find((a) => a.id === key)?.name ?? key)
+			: groupBy === 'type'
+				? (typeLabels[key] ?? key)
+				: key;
 	}
-	const categoryKeys = [...categoryTotals.keys()].sort(
-		(a, b) => categoryTotals.get(b)! - categoryTotals.get(a)!
-	);
-	const groupKeys = $derived(
-		groupBy === 'account'
-			? accounts.map((a) => a.id)
-			: groupBy === 'category'
-				? categoryKeys
-				: [...new Set(accounts.map((a) => (groupBy === 'bank' ? a.bank : a.type)))]
-	);
-	const slotOf = $derived(new Map(groupKeys.map((k, i) => [k, i])));
-
-	// Account groupings plot LEVELS (running balances, buckets take closing
-	// values); the category grouping - and the spending lens under ANY
-	// grouping - plots FLOWS (buckets sum txns). The bucket control is obeyed
-	// verbatim in both modes - daily flows are spiky, but that's the user's
-	// call, never a silent override.
-	const isFlow = $derived(groupBy === 'category' || flowMode !== 'both');
-	const cumulative = $derived(cumulativeChoice ?? !isFlow);
-	const flowKeyOf = $derived.by(() => {
-		if (groupBy === 'category') return (t: Txn) => t.category;
-		const of = new Map(accounts.map((a) => [a.id, groupBy === 'bank' ? a.bank : a.type]));
-		return groupBy === 'account' ? (t: Txn) => t.account_id : (t: Txn) => of.get(t.account_id);
-	});
-	// Under a single-direction lens, keys with no txns in that direction
-	// (income categories under Spending, cards under Income, ...) gray out
-	// in the filter dropdown.
-	const applicableKeys = $derived.by(() => {
-		if (flowMode === 'both') return null;
-		const s = new Set<string>();
-		for (const t of txns) {
-			if (!t.category || t.internal) continue;
-			if (flowMode === 'spending' ? t.amount >= 0 : t.amount <= 0) continue;
-			const k = flowKeyOf(t);
-			if (k) s.add(k);
-		}
-		return s;
-	});
-	const chartData = $derived.by(() => {
-		if (!dateStart || !dateEnd || !balances) return null;
-		let base: ReturnType<typeof bucketize>;
-		if (isFlow) {
-			base = flowSeries(
-				txns,
-				dateStart,
-				dateEnd,
-				bucket,
-				flowKeyOf,
-				flowMode === 'both' ? 'signed' : flowMode
-			);
-		} else {
-			base = bucketize(groupSeries(balances, accounts, groupBy), bucket);
-			if (!cumulative) {
-				// Per bucket on balances = each bucket's net CHANGE per account;
-				// the day-before-window levels anchor the first bucket's delta.
-				const dayBefore = addDays(dateStart, -1);
-				const init = groupSeries(
-					deriveBalances(txns, accounts, dayBefore, dayBefore),
-					accounts,
-					groupBy
-				);
-				base = differentiate(base, new Map(init.series.map((s) => [s.key, s.data[0]])));
-			}
-		}
-		const result = { ...base, series: base.series.filter((s) => !excluded.includes(s.key)) };
-		return isFlow && cumulative ? accumulate(result) : result;
-	});
-	// Filters apply to the headline too (dashboards skill): under account
-	// groupings, hidden series drop out of the total; category filters don't
-	// partition wealth, so those leave it whole.
-	const currentTotal = $derived.by(() => {
-		if (!balances) return 0;
-		const hiddenAccount = (id: string): boolean => {
-			if (groupBy === 'category') return false;
-			const key =
-				groupBy === 'account'
-					? id
-					: (accounts.find((a) => a.id === id)?.[groupBy === 'bank' ? 'bank' : 'type'] ?? id);
-			return excluded.includes(key);
-		};
-		return balances.series.reduce(
-			(sum, s) => sum + (hiddenAccount(s.key) ? 0 : (s.data.at(-1) ?? 0)),
-			0
+	function iconFor(key: string): string | undefined {
+		const category = groupBy === 'category' ? categories.find((c) => c.name === key) : undefined;
+		return category && 'iconUrl' in category && typeof category.iconUrl === 'string'
+			? category.iconUrl
+			: undefined;
+	}
+	function iconComponent(key: string) {
+		return groupBy === 'category'
+			? IconHelp
+			: key === FRIEND_PAID
+				? IconArrowsDownUp
+				: groupBy === 'bank'
+					? IconBuildingBank
+					: IconWallet;
+	}
+	function toggleSeries(key: string): void {
+		controls.hidden = toggleHidden(
+			{ ...controls.hidden, [groupBy]: view.hidden },
+			groupBy,
+			key,
+			view.applicable
 		);
-	});
+	}
+	function setDates(start: string, end: string): void {
+		const next = clampRange(start, end, minDate, maxDate);
+		controls.activePreset = '';
+		controls.dateStart = next.start;
+		controls.dateEnd = next.end;
+	}
 	const money = (v: number): string =>
-		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+	const coverageLabels = {
+		verified: 'Verified',
+		unverified: 'Unverified',
+		missing: 'Missing transactions',
+		'investment-unvalued': 'Investment value unavailable'
+	};
+	const incomplete = $derived(
+		data.coverage.some((c) => c.status !== 'verified' || c.basis !== 'money')
+	);
+	async function refresh(): Promise<void> {
+		refreshing = true;
+		refreshError = '';
+		try {
+			const response = await fetch('/api/finance', { cache: 'no-store' });
+			if (!response.ok)
+				throw new Error(`Refresh failed (${response.status}). Showing the previous data.`);
+			data = await response.json();
+		} catch (error) {
+			refreshError =
+				error instanceof Error ? error.message : 'Refresh failed. Showing the previous data.';
+		} finally {
+			refreshing = false;
+		}
+	}
+	$effect(() => {
+		if (JSON.stringify(controls) !== initialControls) edited = true;
+		writeControls(storage, viewState, deepLink, edited);
+		const url = new URL(window.location.href);
+		url.search = controlParams(viewState, url.searchParams).toString();
+		window.history.replaceState(window.history.state, '', url);
+	});
 </script>
 
 <Seo title="networth" description="Money over time, across every account." />
@@ -261,10 +177,12 @@
 			<p class="text-sm text-muted-foreground">Money over time, across every account</p>
 		</div>
 		<div class="text-right">
-			<div class="text-2xl font-semibold tabular-nums">{money(currentTotal)}</div>
+			<div class="text-2xl font-semibold tabular-nums">{money(view.total)}</div>
 			<div class="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
-				as of {dateEnd}
-				<Badge variant="outline">mock data</Badge>
+				{view.title}
+				{view.cumulative && !view.isFlow
+					? `as of ${viewState.dateEnd}`
+					: `${viewState.dateStart} to ${viewState.dateEnd}`}
 			</div>
 		</div>
 	</header>
@@ -272,12 +190,12 @@
 	<div class="flex flex-wrap items-center gap-2">
 		<Select.Root
 			type="single"
-			value={activePreset}
-			onValueChange={(v) => (activePreset = v as PresetLabel)}
+			value={controls.activePreset}
+			onValueChange={(v) => (controls.activePreset = v as PresetLabel)}
 		>
-			<Select.Trigger>
+			<Select.Trigger class="min-h-9">
 				<IconCalendarWeek size={16} class="text-muted-foreground" />
-				{activePreset === '' ? 'Custom' : activePreset}
+				{controls.activePreset === '' ? 'Custom' : controls.activePreset}
 			</Select.Trigger>
 			<Select.Content>
 				{#each PRESET_LABELS as label (label)}
@@ -286,10 +204,14 @@
 			</Select.Content>
 		</Select.Root>
 
-		<Select.Root type="single" value={bucket} onValueChange={(v) => (bucket = v as Bucket)}>
-			<Select.Trigger>
+		<Select.Root
+			type="single"
+			value={controls.bucket}
+			onValueChange={(v) => (controls.bucket = v as Bucket)}
+		>
+			<Select.Trigger class="min-h-9">
 				<IconCalendarStats size={16} class="text-muted-foreground" />
-				{bucket === 'day' ? 'Daily' : bucket === 'week' ? 'Weekly' : 'Monthly'}
+				{controls.bucket === 'day' ? 'Daily' : controls.bucket === 'week' ? 'Weekly' : 'Monthly'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Item value="day" label="Daily" />
@@ -302,11 +224,10 @@
 			type="single"
 			value={groupBy}
 			onValueChange={(v) => {
-				groupBy = v as GroupBy;
-				excluded = [];
+				controls.groupBy = v as GroupBy;
 			}}
 		>
-			<Select.Trigger>
+			<Select.Trigger class="min-h-9">
 				<IconStack2 size={16} class="text-muted-foreground" />
 				{groupBy === 'account'
 					? 'By account'
@@ -324,11 +245,17 @@
 			</Select.Content>
 		</Select.Root>
 
-		<Select.Root type="single" value={kind} onValueChange={(v) => (kind = v as 'area' | 'bar')}>
-			<Select.Trigger>
-				{#if kind === 'area'}
+		<Select.Root
+			type="single"
+			value={controls.kind}
+			onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
+		>
+			<Select.Trigger class="min-h-9">
+				{#if controls.kind === 'area'}
 					<IconChartAreaFilled size={16} class="text-muted-foreground" />
 					Area
+				{:else if controls.kind === 'line'}
+					<IconChartLine size={16} class="text-muted-foreground" /> Line
 				{:else}
 					<IconChartBar size={16} class="text-muted-foreground" />
 					Bars
@@ -337,6 +264,7 @@
 			<Select.Content>
 				<Select.Item value="area" label="Area" />
 				<Select.Item value="bar" label="Bars" />
+				<Select.Item value="line" label="Line" />
 			</Select.Content>
 		</Select.Root>
 
@@ -347,7 +275,7 @@
 						{...props}
 						variant={flowMode === 'both' ? 'outline' : 'default'}
 						size="sm"
-						class="font-normal"
+						class="min-h-9 font-normal"
 					>
 						<IconArrowsDownUp
 							size={16}
@@ -365,12 +293,14 @@
 			<DropdownMenu.Content class="w-44">
 				{#each ['spending', 'income'] as const as dir (dir)}
 					<DropdownMenu.CheckboxItem
-						checked={flows.includes(dir)}
+						checked={controls.flows.includes(dir)}
 						closeOnSelect={false}
 						onCheckedChange={(checked) => {
-							const next = checked ? [...flows, dir] : flows.filter((f) => f !== dir);
+							const next = checked
+								? [...controls.flows, dir]
+								: controls.flows.filter((f) => f !== dir);
 							// empty selection means nothing to plot - snap back to both
-							flows = next.length === 0 ? ['spending', 'income'] : next;
+							controls.flows = next.length === 0 ? ['spending', 'income'] : next;
 						}}
 					>
 						{dir === 'spending' ? 'Spending' : 'Income'}
@@ -381,12 +311,12 @@
 
 		<Select.Root
 			type="single"
-			value={cumulative ? 'cumulative' : 'bucket'}
-			onValueChange={(v) => (cumulativeChoice = v === 'cumulative')}
+			value={view.cumulative ? 'cumulative' : 'bucket'}
+			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
 		>
-			<Select.Trigger>
+			<Select.Trigger class="min-h-9">
 				<IconSum size={16} class="text-muted-foreground" />
-				{cumulative ? 'Cumulative' : 'Per bucket'}
+				{view.cumulative ? 'Cumulative' : 'Per bucket'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Item value="bucket" label="Per bucket" />
@@ -397,7 +327,12 @@
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
-					<Button {...props} variant="outline" size="sm" class="font-normal">
+					<Button
+						{...props}
+						variant={excluded.length ? 'default' : 'outline'}
+						size="sm"
+						class="min-h-9 font-normal"
+					>
 						<IconFilter size={16} class="text-muted-foreground" />
 						{excluded.length === 0 ? 'All series' : `Hiding ${excluded.length}`}
 						<IconChevronDown size={16} class="text-muted-foreground" />
@@ -405,61 +340,141 @@
 				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="max-h-96 w-64 overflow-y-auto">
-				{#each groupKeys as key (key)}
-					{@const Icon = groupBy === 'category' ? categoryIcon(key) : undefined}
+				<div class="sticky top-0 z-10 bg-popover pb-2">
+					<Input bind:value={search} aria-label="Search series" placeholder="Search series" />
+				</div>
+				{#each filterKeys as key (key)}
 					<DropdownMenu.CheckboxItem
 						checked={!excluded.includes(key)}
-						disabled={applicableKeys ? !applicableKeys.has(key) : false}
+						disabled={!view.applicable.includes(key)}
 						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							excluded = checked ? excluded.filter((k) => k !== key) : [...excluded, key];
-						}}
+						onCheckedChange={() => toggleSeries(key)}
 					>
-						{#if Icon}
-							<Icon size={16} class="mr-1.5 text-muted-foreground" />
-						{/if}
+						{#if iconFor(key)}<span
+								class="series-icon mr-1.5"
+								style:mask-image={`url("${iconFor(key)}")`}
+								aria-hidden="true"
+							></span>{:else}{@const Icon = iconComponent(key)}<Icon
+								size={16}
+								class="mr-1.5"
+							/>{/if}
 						{labelFor(key)}
 					</DropdownMenu.CheckboxItem>
 				{/each}
 				{#if excluded.length > 0}
 					<DropdownMenu.Separator />
-					<DropdownMenu.Item onclick={() => (excluded = [])}>Show all</DropdownMenu.Item>
+					<DropdownMenu.Item
+						onclick={() => (controls.hidden = { ...controls.hidden, [groupBy]: [] })}
+						>Show all</DropdownMenu.Item
+					>
 				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 	</div>
 
+	<div class="flex flex-wrap items-center gap-2 text-xs">
+		<label class="flex items-center gap-2"
+			>From <input
+				class="min-h-9 rounded-md border bg-background px-2"
+				type="date"
+				min={minDate}
+				max={viewState.dateEnd}
+				value={viewState.dateStart}
+				onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
+			/></label
+		>
+		<label class="flex items-center gap-2"
+			>To <input
+				class="min-h-9 rounded-md border bg-background px-2"
+				type="date"
+				min={viewState.dateStart}
+				max={maxDate}
+				value={viewState.dateEnd}
+				onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
+			/></label
+		>
+	</div>
 	<RangeSlider
 		min={minDate}
 		max={maxDate}
-		start={dateStart}
-		end={dateEnd}
-		onchange={(start, end) => {
-			activePreset = '';
-			dateStart = start;
-			dateEnd = end;
-		}}
+		start={viewState.dateStart}
+		end={viewState.dateEnd}
+		onchange={setDates}
 	/>
-
-	{#if chartData}
-		<BalanceChart
-			data={chartData}
-			{bucket}
-			{kind}
-			net={flowMode === 'both' && groupBy === 'category'}
-			{labelFor}
-			slotFor={(k) => slotOf.get(k) ?? -1}
-			iconFor={groupBy === 'category' ? categoryIconUrl : undefined}
-		/>
+	<BalanceChart
+		data={view.data}
+		bucket={controls.bucket}
+		kind={controls.kind}
+		net={groupBy === 'category' && flowMode === 'both'}
+		{labelFor}
+		{iconFor}
+		{iconComponent}
+		legendKeys={view.keys}
+		hidden={view.hidden}
+		applicable={view.applicable}
+		onToggle={toggleSeries}
+	/>
+	{#if !view.applicable.length}<p class="text-sm text-muted-foreground" role="status">
+			No matching data in this date range.
+		</p>{/if}
+	{#if view.isFlow && view.uncategorized > 0}
+		<p class="text-xs text-muted-foreground" role="status">
+			{view.uncategorized.toLocaleString('en-US')} uncategorized {view.uncategorized === 1
+				? 'entry omitted'
+				: 'entries omitted'} from flows
+			{groupBy === 'category'
+				? 'in this date range, across all categories'
+				: 'within these dates and account filters'}.
+		</p>
 	{/if}
-
-	<div class="flex flex-wrap gap-2">
-		{#each MOCK_POINTS as p (p.program)}
-			<div class="flex items-baseline gap-2 rounded-lg border px-3 py-2">
-				<span class="text-sm font-medium">{p.program}</span>
-				<span class="text-sm tabular-nums">{p.points.toLocaleString('en-US')} pts</span>
-				<span class="text-xs text-muted-foreground tabular-nums">≈ {money(p.estValue)}</span>
-			</div>
-		{/each}
+	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+		<span
+			>{incomplete
+				? 'Incomplete balance coverage. Balances include verified monetary accounts only; investment values are unavailable.'
+				: 'Balances include verified monetary accounts.'}</span
+		>
+		<Button variant="outline" class="min-h-9" onclick={refresh} disabled={refreshing}
+			><IconRefresh size={16} class={refreshing ? 'animate-spin' : ''} />{refreshing
+				? 'Refreshing'
+				: 'Refresh data'}</Button
+		>
+	</div>
+	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
+	<details class="rounded-lg border p-3">
+		<summary class="cursor-pointer text-sm">Balance coverage · all accounts</summary>
+		<ul class="mt-3 space-y-3 text-xs">
+			{#each data.coverage as c (c.account_id)}
+				<li class="break-words">
+					<span class="font-medium"
+						>{accounts.find((a) => a.id === c.account_id)?.name ?? c.account_id}</span
+					>: {coverageLabels[c.status]}
+					{#if c.asOf}<span class="text-muted-foreground">
+							· checked {c.asOf.slice(0, 10)}</span
+						>{/if}
+					{#if c.reasons.length}<p class="mt-1 text-muted-foreground">
+							{c.reasons.join(' · ')}
+						</p>{/if}
+				</li>
+			{/each}
+		</ul>
+	</details>
+	<div>
+		<p class="mb-2 text-xs text-muted-foreground">
+			Points · all programs · latest snapshots on or before {viewState.dateEnd}
+		</p>
+		<div class="flex flex-wrap gap-2">
+			{#each selectedPoints as p (p.program)}
+				<div class="rounded-lg border px-3 py-2">
+					<div class="flex flex-wrap items-baseline gap-2">
+						<span class="text-sm font-medium">{p.program}</span><span class="text-sm tabular-nums"
+							>{p.points.toLocaleString('en-US')} pts</span
+						><span class="text-xs text-muted-foreground"
+							>{p.estValue === null ? 'Value unavailable' : `≈ ${money(p.estValue)}`}</span
+						>
+					</div>
+					<p class="mt-1 text-xs text-muted-foreground">as of {p.scrapedAt?.slice(0, 10)}</p>
+				</div>
+			{/each}
+		</div>
 	</div>
 </main>

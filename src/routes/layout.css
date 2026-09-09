@@ -23,6 +23,18 @@
 	--color-sidebar-primary: var(--sidebar-primary);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar: var(--sidebar);
+	--color-chart-13: var(--chart-13);
+	--color-chart-14: var(--chart-14);
+	--color-chart-15: var(--chart-15);
+	--color-chart-16: var(--chart-16);
+	--color-chart-17: var(--chart-17);
+	--color-chart-18: var(--chart-18);
+	--color-chart-19: var(--chart-19);
+	--color-chart-20: var(--chart-20);
+	--color-chart-21: var(--chart-21);
+	--color-chart-22: var(--chart-22);
+	--color-chart-23: var(--chart-23);
+	--color-chart-24: var(--chart-24);
 	--color-chart-12: var(--chart-12);
 	--color-chart-11: var(--chart-11);
 	--color-chart-10: var(--chart-10);
@@ -93,6 +105,20 @@
 	--chart-10: #a16207;
 	--chart-11: #9f1239;
 	--chart-12: #65a30d;
+	--chart-13: #6d28d9;
+	--chart-14: #be185d;
+	--chart-15: #047857;
+	--chart-16: #0369a1;
+	--chart-17: #b45309;
+	--chart-18: #475569;
+	--chart-19: #7e22ce;
+	--chart-20: #be123c;
+	--chart-21: #0f766e;
+	--chart-22: #4338ca;
+	--chart-23: #a21caf;
+	--chart-24: #4d7c0f;
+	--chart-saturation: 65;
+	--chart-lightness: 42;
 	--radius: 0.625rem;
 	--sidebar: oklch(0.985 0 0);
 	--sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -135,6 +161,20 @@
 	--chart-10: #b8860b;
 	--chart-11: #c22550;
 	--chart-12: #6b9e12;
+	--chart-13: #b58cf5;
+	--chart-14: #ee7bac;
+	--chart-15: #54c79d;
+	--chart-16: #5fbbdc;
+	--chart-17: #d6a450;
+	--chart-18: #94a3b8;
+	--chart-19: #cb92e8;
+	--chart-20: #ef8890;
+	--chart-21: #65c5be;
+	--chart-22: #9e9ded;
+	--chart-23: #dca0dc;
+	--chart-24: #a7ca68;
+	--chart-saturation: 65;
+	--chart-lightness: 65;
 	--sidebar: oklch(0.21 0.006 285.885);
 	--sidebar-foreground: oklch(0.985 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);
@@ -155,4 +195,15 @@
 	html {
 		@apply font-sans;
 	}
+}
+
+.series-icon {
+	display: inline-block;
+	width: 1rem;
+	height: 1rem;
+	flex-shrink: 0;
+	background-color: currentColor;
+	mask-size: contain;
+	mask-repeat: no-repeat;
+	mask-position: center;
 }

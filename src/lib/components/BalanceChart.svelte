@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import IconHelp from '@tabler/icons-svelte/icons/help';
+	import { colorForSlot, needsNet } from '$lib/finance/chartStyle';
 	import {
 		Chart,
 		LineController,
@@ -36,9 +38,13 @@
 	interface Props {
 		data: StackedSeries;
 		bucket?: Bucket;
-		kind?: 'area' | 'bar';
-		/** Overlay a dashed net-total line (assets minus debt) on the stack. */
+		kind?: 'area' | 'bar' | 'line';
 		net?: boolean;
+		/** Overlay a dashed net-total line (assets minus debt) on the stack. */
+		legendKeys: string[];
+		hidden: string[];
+		applicable: string[];
+		onToggle: (key: string) => void;
 		heightClass?: string;
 		labelFor?: (key: string) => string;
 		/** Stable palette slot per series key - keeps an entity's color fixed
@@ -46,17 +52,23 @@
 		slotFor?: (key: string) => number;
 		/** Icon URL per series key (already tinted) - becomes the legend and
 		 * tooltip marker via a canvas point style. */
-		iconFor?: (key: string, hexColor: string) => string | undefined;
+		iconFor?: (key: string) => string | undefined;
+		iconComponent?: (key: string) => typeof IconHelp;
 	}
 	const {
 		data,
 		bucket = 'day',
-		kind = 'area',
+		kind = 'bar',
 		net = false,
+		legendKeys,
+		hidden,
+		applicable,
+		onToggle,
 		heightClass = 'h-[360px] sm:h-[460px]',
 		labelFor = (k) => k,
 		slotFor,
-		iconFor
+		iconFor = () => undefined,
+		iconComponent = () => IconHelp
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -75,16 +87,23 @@
 			chart?.update('none');
 		});
 	}
-	function iconCanvas(url: string): HTMLCanvasElement {
-		let c = iconCanvases.get(url);
+	function iconCanvas(url: string, tint: string): HTMLCanvasElement {
+		const cacheKey = `${url}:${tint}`;
+		let c = iconCanvases.get(cacheKey);
 		if (c) return c;
 		c = document.createElement('canvas');
 		c.width = 14;
 		c.height = 14;
-		iconCanvases.set(url, c);
+		iconCanvases.set(cacheKey, c);
 		const img = new Image();
 		img.onload = () => {
-			c!.getContext('2d')?.drawImage(img, 0, 0, 14, 14);
+			const ctx = c!.getContext('2d');
+			if (ctx) {
+				ctx.drawImage(img, 0, 0, 14, 14);
+				ctx.globalCompositeOperation = 'source-in';
+				ctx.fillStyle = tint;
+				ctx.fillRect(0, 0, 14, 14);
+			}
 			scheduleRepaint();
 		};
 		img.src = url;
@@ -97,7 +116,9 @@
 		const style = getComputedStyle(document.documentElement);
 		const token = (name: string): string => style.getPropertyValue(name).trim();
 		return {
-			series: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => token(`--chart-${i}`)),
+			series: Array.from({ length: 24 }, (_, i) => i + 1).map((i) => token(`--chart-${i}`)),
+			saturation: Number(token('--chart-saturation')),
+			lightness: Number(token('--chart-lightness')),
 			surface: token('--card'),
 			ink: token('--foreground'),
 			mutedInk: token('--muted-foreground'),
@@ -106,7 +127,7 @@
 	}
 
 	const money = (v: number): string =>
-		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 	const moneyTick = (v: number): string =>
 		Math.abs(v) >= 1000
 			? `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
@@ -120,38 +141,45 @@
 		return dayjs(raw).format('ddd, MMM D, YYYY');
 	};
 
+	let theme = $state<ReturnType<typeof readTheme> | null>(null);
+	const slots = $derived(new Map(legendKeys.map((key, i) => [key, i])));
+	function color(key: string): string {
+		return theme
+			? colorForSlot(
+					slotFor?.(key) ?? slots.get(key) ?? 0,
+					theme.series,
+					theme.saturation,
+					theme.lightness
+				)
+			: 'currentColor';
+	}
 	function render(): void {
-		if (!canvas) return;
+		if (!canvas || !theme) return;
+		const chartTheme = theme;
 		chart?.destroy();
-		const theme = readTheme();
-		// Color follows the entity: stable slot from slotFor (registry order),
-		// never the series' current array position, rank, or visibility.
-		// A slot of -1 means "folded tail" - it wears gray, never a repeated hue.
-		const color = (key: string, i: number): string => {
-			const slot = slotFor?.(key) ?? i;
-			return slot < 0 ? theme.mutedInk : theme.series[slot % theme.series.length];
+		const pointStyle = (key: string) => {
+			const url = iconFor(key);
+			return url ? iconCanvas(url, color(key)) : 'rectRounded';
 		};
-		const pointStyle = (key: string, i: number): HTMLCanvasElement | 'rectRounded' => {
-			const url = iconFor?.(key, color(key, i));
-			return url ? iconCanvas(url) : 'rectRounded';
-		};
+		const showNet = needsNet(data, net);
+
 		// The net line lives in its own stack group so the stacked y-scale never
 		// adds it to the account bands - it plots the true total.
-		const netDataset = net
+		const netDataset = showNet
 			? [
 					{
 						label: 'Net',
 						type: 'line' as const,
 						data: netTotals(data),
 						stack: 'net',
-						borderColor: theme.ink,
-						backgroundColor: theme.ink,
+						borderColor: chartTheme.ink,
+						backgroundColor: chartTheme.ink,
 						pointStyle: 'line' as const,
 						borderDash: [6, 4],
 						borderWidth: 2,
 						pointRadius: 0,
 						pointHoverRadius: 5,
-						pointBorderColor: theme.surface,
+						pointBorderColor: chartTheme.surface,
 						pointBorderWidth: 2,
 						fill: false,
 						tension: 0.2,
@@ -167,25 +195,25 @@
 					.map((s, i) => ({
 						label: labelFor(s.key),
 						data: s.data,
-						pointStyle: pointStyle(s.key, i),
+						pointStyle: pointStyle(s.key),
 						...(kind === 'bar'
 							? {
 									// neighbors separated by surface, not strokes
-									backgroundColor: color(s.key, i),
-									borderColor: theme.surface,
+									backgroundColor: color(s.key),
+									borderColor: chartTheme.surface,
 									borderWidth: { top: 2, right: 0, bottom: 0, left: 0 },
 									borderRadius: 3,
 									borderSkipped: false,
 									maxBarThickness: 24
 								}
 							: {
-									fill: true,
-									borderColor: color(s.key, i),
-									backgroundColor: color(s.key, i) + 'cc',
+									fill: kind === 'area' ? 'stack' : false,
+									borderColor: color(s.key),
+									backgroundColor: color(s.key),
 									borderWidth: 2,
 									pointRadius: 0,
 									pointHoverRadius: 5,
-									pointBorderColor: theme.surface,
+									pointBorderColor: chartTheme.surface,
 									pointBorderWidth: 2,
 									tension: 0.2
 								})
@@ -203,37 +231,38 @@
 						stacked: true,
 						offset: kind === 'bar',
 						grid: { display: false },
-						border: { color: theme.gridline },
+						border: { color: chartTheme.gridline },
 						time: {
-							unit: bucket === 'month' ? 'month' : 'week',
-							displayFormats: { week: 'MMM D', month: 'MMM YYYY' }
+							unit: bucket === 'month' ? 'month' : bucket === 'week' ? 'week' : 'day',
+							isoWeekday: 1,
+							displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' }
 						},
 						ticks: {
-							color: theme.mutedInk,
+							color: chartTheme.mutedInk,
 							maxRotation: 0,
 							autoSkip: true,
 							maxTicksLimit: 10,
-							font: { size: 11 }
+							font: { size: 12 }
 						}
 					},
 					y: {
 						stacked: true,
 						beginAtZero: true,
-						grid: { color: theme.gridline, lineWidth: 1 },
+						grid: { color: chartTheme.gridline, lineWidth: 1 },
 						border: { display: false },
 						ticks: {
-							color: theme.mutedInk,
-							font: { size: 11 },
+							color: chartTheme.mutedInk,
+							font: { size: 12 },
 							callback: (v) => moneyTick(Number(v))
 						}
 					}
 				},
 				plugins: {
 					legend: {
-						display: data.series.length > 1,
+						display: false,
 						position: 'bottom',
 						labels: {
-							color: theme.ink,
+							color: chartTheme.ink,
 							usePointStyle: true,
 							pointStyleWidth: 16,
 							boxHeight: 14,
@@ -242,12 +271,12 @@
 					},
 					tooltip: {
 						usePointStyle: true,
-						backgroundColor: theme.surface,
-						titleColor: theme.ink,
-						bodyColor: theme.ink,
-						footerColor: theme.mutedInk,
+						backgroundColor: chartTheme.surface,
+						titleColor: chartTheme.ink,
+						bodyColor: chartTheme.ink,
+						footerColor: chartTheme.mutedInk,
 						footerFont: { weight: 'normal' },
-						borderColor: theme.gridline,
+						borderColor: chartTheme.gridline,
 						borderWidth: 1,
 						padding: 10,
 						itemSort: (a, b) => (b.parsed.y ?? 0) - (a.parsed.y ?? 0),
@@ -257,7 +286,7 @@
 							footer: (items) => {
 								// the Net row already IS the total - don't double-count it
 								const total = items
-									.filter((it) => it.dataset.label !== 'Net')
+									.filter((it) => it.dataset.stack !== 'net')
 									.reduce((sum, it) => sum + (it.parsed.y ?? 0), 0);
 								return `Total: ${money(total)}`;
 							}
@@ -268,7 +297,21 @@
 		});
 	}
 
-	onMount(() => () => chart?.destroy());
+	onMount(() => {
+		theme = readTheme();
+		const observer = new MutationObserver(() => {
+			theme = readTheme();
+		});
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['class', 'style']
+		});
+		return () => {
+			observer.disconnect();
+			chart?.destroy();
+			chart = null;
+		};
+	});
 	$effect(() => {
 		void data;
 		void bucket;
@@ -278,5 +321,33 @@
 </script>
 
 <div class="relative w-full {heightClass}">
-	<canvas bind:this={canvas}></canvas>
+	<canvas bind:this={canvas} aria-label="Financial series for the selected date range"></canvas>
+</div>
+
+<div
+	class="mt-3 flex max-h-48 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto"
+	aria-label="Chart legend"
+>
+	{#each legendKeys as key (key)}
+		<button
+			type="button"
+			class="flex min-h-9 max-w-full items-center gap-1.5 rounded px-1 text-xs disabled:opacity-40"
+			aria-pressed={!hidden.includes(key)}
+			disabled={!applicable.includes(key)}
+			onclick={() => onToggle(key)}
+			title={applicable.includes(key)
+				? `Toggle ${labelFor(key)}`
+				: `${labelFor(key)}: no data in this view`}
+		>
+			{#if iconFor(key)}<span
+					class="series-icon"
+					style:color={color(key)}
+					style:mask-image={`url("${iconFor(key)}")`}
+					aria-hidden="true"
+				></span>{:else}{@const Icon = iconComponent(key)}<Icon size={16} color={color(key)} />{/if}
+			<span class:line-through={hidden.includes(key)} class="break-words text-left"
+				>{labelFor(key)}</span
+			>
+		</button>
+	{/each}
 </div>
