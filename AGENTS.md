@@ -23,7 +23,9 @@ protects the site and every API route.
 - Synthetic openings and internal transfers affect balances, not spending.
 - Chart and Overview share selectors and filters. Overview uses closing
   balances or period flow totals, with unavailable values distinct from zero.
-  Closed-account filtering must not change an entity's palette slot.
+  Both views keep the same width and selector positions. Date controls are
+  Chart-only; their selected range persists in Overview. Open and Closed
+  are independent checkboxes; filtering must not change an entity's palette slot.
 - Account names follow the registry's effective-date history, with one stable
   ledger through product conversions. Account metadata lives in the data
   estate, never in source code. Tooltip rows that display as zero are hidden.

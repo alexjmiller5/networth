@@ -7,8 +7,10 @@ and the URL stays clean.
 
 Use the Chart / Overview selector to replace the graph with compact totals.
 Overview shows closing balances in balance mode and period totals in spending
-or income mode. Grouping, dates, visible series, and the Open & closed filter
-apply to both views. Chart-only controls stay saved while disabled in Overview.
+or income mode. Grouping, dates, visible series, and the Open / Closed
+checkboxes apply to both views. Select either account status or both.
+Both views keep the same width. Date controls appear only on Chart; the
+selected range stays saved in Overview. Other chart-only controls stay disabled.
 Unavailable balances are labeled explicitly and excluded from the subtotal.
 Tooltips omit amounts that display as zero.
 

@@ -17,7 +17,7 @@ export const GROUPS = ['account', 'bank', 'type', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export interface Controls {
 	presentation: 'chart' | 'overview';
-	includeClosed: boolean;
+	accountStatuses: ('open' | 'closed')[];
 	activePreset: PresetLabel | '';
 	dateStart: string;
 	dateEnd: string;
@@ -83,6 +83,9 @@ export function readControls(
 	const flows = validFlows(saved.flows)
 		? [...new Set(saved.flows)]
 		: (['spending', 'income'] as Controls['flows']);
+	const accountStatuses = strings(saved.accountStatuses).filter(
+		(s): s is 'open' | 'closed' => s === 'open' || s === 'closed'
+	);
 	const savedHidden = record(saved.hidden);
 	const hidden = Object.fromEntries(
 		GROUPS.map((g) => [g, strings(savedHidden[g])])
@@ -90,7 +93,11 @@ export function readControls(
 	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
 	return {
 		presentation: choice(saved.presentation, ['chart', 'overview'], 'chart'),
-		includeClosed: typeof saved.includeClosed === 'boolean' ? saved.includeClosed : true,
+		accountStatuses: accountStatuses.length
+			? accountStatuses
+			: saved.includeClosed === false
+				? ['open']
+				: ['open', 'closed'],
 		activePreset: custom ? '' : activePreset,
 		dateStart: range.start,
 		dateEnd: range.end,
@@ -138,10 +145,12 @@ export function buildView(
 	state: Controls,
 	coverage?: AccountCoverage[]
 ) {
-	if (!state.includeClosed) {
-		accounts = accounts.filter((a) => !a.closed);
+	if (state.accountStatuses.length < 2) {
+		accounts = accounts.filter((a) => state.accountStatuses.includes(a.closed ? 'closed' : 'open'));
 		const ids = new Set(accounts.map((a) => a.id));
-		txns = txns.filter((t) => t.standalone || ids.has(t.account_id ?? ''));
+		txns = txns.filter((t) =>
+			t.standalone ? state.accountStatuses.includes('open') : ids.has(t.account_id ?? '')
+		);
 	}
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
 	const mode = state.flows.length === 1 ? state.flows[0] : 'signed';
