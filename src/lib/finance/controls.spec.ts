@@ -3,16 +3,15 @@ import {
 	buildView,
 	readControls,
 	writeControls,
-	controlParams,
+	clearControlParams,
 	toggleHidden,
-	hasControlParams,
 	pointsAt
 } from './controls';
 
 const min = '2026-01-01';
 const max = '2026-03-31';
-const restore = (saved: string | null = null, query = '') =>
-	readControls({ getItem: () => saved }, new URLSearchParams(query), min, max);
+const restore = (saved: string | null = null) => readControls({ getItem: () => saved }, min, max);
+const state = (saved: Partial<ReturnType<typeof restore>>) => restore(JSON.stringify(saved));
 const accounts = [{ id: 'account-1', name: 'Account', bank: 'Bank', type: 'checking' as const }];
 const categories = [
 	{ id: 'one', name: 'Category 1', kind: 'spending' as const, icon: 'tabler:bolt', sort: 10 },
@@ -33,27 +32,61 @@ describe('control persistence', () => {
 			});
 		}
 	);
-	it('applies valid URL fields over saved ones and lets an empty hide override saved hiding', () => {
-		const s = restore(
-			JSON.stringify({ bucket: 'month', groupBy: 'bank', hidden: { account: ['a'] } }),
-			'bucket=week&group=account&hide.account=[]&preset=7D'
-		);
-		expect(s).toMatchObject({
-			bucket: 'week',
-			groupBy: 'account',
-			dateStart: '2026-03-25',
-			hidden: { account: [] }
+	it('restores saved preferences', () => {
+		expect(
+			state({
+				bucket: 'month',
+				groupBy: 'bank',
+				hidden: { account: ['a'], bank: [], type: [], category: [] }
+			})
+		).toMatchObject({
+			bucket: 'month',
+			groupBy: 'bank',
+			dateStart: min,
+			hidden: { account: ['a'] }
 		});
 	});
-	it('roundtrips every control and every grouping, including punctuation in series names', () => {
-		const s = restore(
-			null,
-			'preset=custom&start=2026-01-03&end=2026-02-04&flows=income&cum=0&chart=line'
+	it('removes every control parameter from existing links while preserving unrelated parameters', () => {
+		const params = new URLSearchParams(
+			'preset=7D&start=2026-01-01&end=2026-03-31&bucket=week&group=bank&chart=line&flows=spending&cum=1&hide=a&hide.account=[]&hide.bank=[]&hide.type=[]&hide.category=[]&keep=yes'
 		);
-		s.hidden = { account: ['a'], bank: ['A, B & C'], type: ['checking'], category: ['Category 2'] };
-		expect(restore(null, controlParams(s).toString())).toEqual(s);
+		expect(clearControlParams(params).toString()).toBe('keep=yes');
+		expect(params.get('preset')).toBe('7D');
+		expect(clearControlParams(new URLSearchParams()).toString()).toBe('');
 	});
-	it('survives denied storage access and protects the saved view when following a deep link', () => {
+	it('roundtrips every control and grouping through local storage', () => {
+		const s = state({
+			activePreset: '',
+			dateStart: '2026-01-03',
+			dateEnd: '2026-02-04',
+			flows: ['income'],
+			cumulativeChoice: false,
+			kind: 'line'
+		});
+		s.hidden = { account: ['a'], bank: ['A, B & C'], type: ['checking'], category: ['Category 2'] };
+		let saved = '';
+		expect(
+			writeControls(
+				{
+					setItem: (key, value) => {
+						expect(key).toBe('networth-ui');
+						saved = value;
+					}
+				},
+				s
+			)
+		).toBe(true);
+		expect(restore(saved)).toEqual(s);
+	});
+	it('reapplies a saved relative preset as new data arrives', () => {
+		const saved = JSON.stringify({ activePreset: '7D', dateStart: min, dateEnd: max });
+		expect(readControls({ getItem: () => saved }, min, '2026-04-05')).toMatchObject({
+			activePreset: '7D',
+			dateStart: '2026-03-30',
+			dateEnd: '2026-04-05'
+		});
+	});
+	it('survives denied or unavailable storage access', () => {
 		expect(
 			readControls(
 				{
@@ -61,44 +94,22 @@ describe('control persistence', () => {
 						throw new Error('blocked');
 					}
 				},
-				new URLSearchParams(),
 				min,
 				max
 			)
 		).toEqual(restore());
-		const storage = {
-			setItem: () => {
-				throw new Error('blocked');
-			}
-		};
-		expect(writeControls(storage, restore(), false)).toBe(false);
-		let writes = 0;
+		expect(readControls(undefined, min, max)).toEqual(restore());
 		expect(
 			writeControls(
 				{
 					setItem: () => {
-						writes++;
+						throw new Error('blocked');
 					}
 				},
-				restore(),
-				true
+				restore()
 			)
 		).toBe(false);
-		expect(writes).toBe(0);
-		expect(
-			writeControls(
-				{
-					setItem: () => {
-						writes++;
-					}
-				},
-				restore(),
-				true,
-				true
-			)
-		).toBe(true);
-		expect(writes).toBe(1);
-		expect(hasControlParams(new URLSearchParams('start=2026-01-03'))).toBe(true);
+		expect(writeControls(undefined, restore())).toBe(false);
 	});
 	it('does not erase other grouping selections and resets hiding the last applicable series', () => {
 		const s = restore();
@@ -126,12 +137,15 @@ describe('page chart view', () => {
 				categoryKind: 'unknown' as const
 			}
 		];
-		const state = restore(null, 'flows=spending&hide.account=["account-2"]');
-		expect(buildView(rows, accounts, categories, state).uncategorized).toBe(1);
-		state.groupBy = 'category';
-		expect(buildView(rows, accounts, categories, state).uncategorized).toBe(2);
-		state.flows = ['income'];
-		expect(buildView(rows, accounts, categories, state).uncategorized).toBe(1);
+		const selection = state({
+			flows: ['spending'],
+			hidden: { account: ['account-2'], bank: [], type: [], category: [] }
+		});
+		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(1);
+		selection.groupBy = 'category';
+		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(2);
+		selection.flows = ['income'];
+		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(1);
 	});
 	it('counts shares and friend-paid spending under every grouping while balances stay raw', () => {
 		const txns = [
@@ -144,7 +158,7 @@ describe('page chart view', () => {
 			},
 			{ account_id: '', date: '2026-02-02', amount: -5, category: 'Category 2', standalone: true }
 		];
-		const s = restore(null, 'flows=spending&bucket=month');
+		const s = state({ flows: ['spending'], bucket: 'month' });
 		const view = buildView(txns, accounts, categories, s);
 		expect(view.total).toBe(25);
 		expect(view.keys).toContain('friend-paid');
@@ -163,7 +177,7 @@ describe('page chart view', () => {
 			icon: 'tabler:bolt',
 			sort: i
 		}));
-		const s = restore(null, 'group=category&flows=spending');
+		const s = state({ groupBy: 'category', flows: ['spending'] });
 		const view = buildView(
 			[{ account_id: 'account-1', date: min, amount: -3, category: 'Category 29' }],
 			accounts,
@@ -182,7 +196,9 @@ describe('page chart view', () => {
 			{ account_id: 'account-1', date: '2026-02-01', amount: 20 }
 		];
 		expect(buildView(rows, accounts, categories, restore()).total).toBe(110);
-		expect(buildView(rows, accounts, categories, restore(null, 'cum=0')).total).toBe(10);
+		expect(buildView(rows, accounts, categories, state({ cumulativeChoice: false })).total).toBe(
+			10
+		);
 	});
 	it('keeps unverified and unvalued accounts out of balance totals while preserving their filter entries', () => {
 		const accts = [accounts[0], { ...accounts[0], id: 'account-2' }];

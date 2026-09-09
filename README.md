@@ -2,8 +2,8 @@
 
 A private money-over-time dashboard backed by a life-data hub. One chart
 shares its date range, grouping, visible series, and display controls with
-the figures around it. Bars are the default; filters persist in the browser
-and can be represented in the URL.
+the figures around it. Bars are the default; filters persist in localStorage
+and the URL stays clean.
 
 ## Data path
 

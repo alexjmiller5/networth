@@ -29,6 +29,8 @@ protects the site and every API route.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
+- Store control preferences in localStorage only, matching Task Burndown
+  and Screentime. Do not write filters into the URL or restore them from it.
 - Use the life-data catalog for category names, kinds, and icons. Do not
   encode the owner's taxonomy or transaction data in this repository.
 - Unit tests live beside the code. Endpoint tests cover credential isolation
