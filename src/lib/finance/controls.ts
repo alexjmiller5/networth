@@ -1,7 +1,9 @@
-import type { Account, AccountCoverage, Category, GroupBy, Txn } from './types';
+import type { Account, AccountCoverage, AssetClass, Category, GroupBy, Txn } from './types';
 import { addDays, clampRange, getPresetRange, PRESET_LABELS, type PresetLabel } from './presets';
 import {
 	accumulate,
+	accountGroup,
+	assetClass,
 	bucketize,
 	deriveBalances,
 	differentiate,
@@ -13,11 +15,14 @@ import {
 } from './series';
 
 export const STORAGE_KEY = 'networth-ui';
-export const GROUPS = ['account', 'bank', 'type', 'category'] as const;
+export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export interface Controls {
 	presentation: 'chart' | 'overview';
 	accountStatuses: ('open' | 'closed')[];
+	assetClasses: AssetClass[];
+	balanceSources: ('accounts' | 'rewards')[];
+	measure: 'balances' | 'activity';
 	activePreset: PresetLabel | '';
 	dateStart: string;
 	dateEnd: string;
@@ -86,6 +91,12 @@ export function readControls(
 	const accountStatuses = strings(saved.accountStatuses).filter(
 		(s): s is 'open' | 'closed' => s === 'open' || s === 'closed'
 	);
+	const assetClasses = strings(saved.assetClasses).filter(
+		(s): s is AssetClass => s === 'cash' || s === 'investments'
+	);
+	const balanceSources = strings(saved.balanceSources).filter(
+		(s): s is 'accounts' | 'rewards' => s === 'accounts' || s === 'rewards'
+	);
 	const savedHidden = record(saved.hidden);
 	const hidden = Object.fromEntries(
 		GROUPS.map((g) => [g, strings(savedHidden[g])])
@@ -98,6 +109,16 @@ export function readControls(
 			: saved.includeClosed === false
 				? ['open']
 				: ['open', 'closed'],
+		assetClasses: assetClasses.length ? assetClasses : ['cash', 'investments'],
+		balanceSources: balanceSources.length ? balanceSources : ['accounts', 'rewards'],
+		measure:
+			groupBy === 'category'
+				? 'activity'
+				: choice(
+						saved.measure,
+						['balances', 'activity'],
+						flows.length === 1 ? 'activity' : 'balances'
+					),
 		activePreset: custom ? '' : activePreset,
 		dateStart: range.start,
 		dateEnd: range.end,
@@ -145,26 +166,31 @@ export function buildView(
 	state: Controls,
 	coverage?: AccountCoverage[]
 ) {
-	if (state.accountStatuses.length < 2) {
-		accounts = accounts.filter((a) => state.accountStatuses.includes(a.closed ? 'closed' : 'open'));
-		const ids = new Set(accounts.map((a) => a.id));
-		txns = txns.filter((t) =>
-			t.standalone ? state.accountStatuses.includes('open') : ids.has(t.account_id ?? '')
-		);
-	}
+	accounts = accounts.filter(
+		(a) =>
+			state.accountStatuses.includes(a.closed ? 'closed' : 'open') &&
+			state.assetClasses.includes(assetClass(a)) &&
+			state.balanceSources.includes(a.type === 'stored_value' ? 'rewards' : 'accounts')
+	);
+	const ids = new Set(accounts.map((a) => a.id));
+	txns = txns.filter((t) =>
+		t.standalone
+			? state.accountStatuses.includes('open') &&
+				state.assetClasses.includes('cash') &&
+				state.balanceSources.includes('accounts')
+			: ids.has(t.account_id ?? '')
+	);
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
 	const mode = state.flows.length === 1 ? state.flows[0] : 'signed';
-	const isFlow = groupBy === 'category' || mode !== 'signed';
+	const isFlow = state.measure === 'activity' || groupBy === 'category';
 	const cumulative = state.presentation === 'overview' || (state.cumulativeChoice ?? !isFlow);
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
-	const keyOf = (t: Txn) =>
-		groupBy === 'category'
-			? t.category
-			: t.standalone
-				? FRIEND_PAID
-				: groupBy === 'account'
-					? (t.account_id ?? undefined)
-					: accountOf.get(t.account_id ?? '')?.[groupBy === 'bank' ? 'bank' : 'type'];
+	const keyOf = (t: Txn) => {
+		if (groupBy === 'category') return t.category;
+		if (t.standalone) return FRIEND_PAID;
+		const account = accountOf.get(t.account_id ?? '');
+		return account ? accountGroup(account, groupBy) : undefined;
+	};
 	const verified = coverage
 		? accounts.filter((a) =>
 				coverage.some(
@@ -198,7 +224,7 @@ export function buildView(
 					...new Set(
 						[...accounts]
 							.sort((a, b) => a.id.localeCompare(b.id))
-							.map((a) => (groupBy === 'account' ? a.id : a[groupBy === 'bank' ? 'bank' : 'type']))
+							.map((a) => accountGroup(a, groupBy))
 					)
 				];
 	if (groupBy !== 'category' && txns.some((t) => t.standalone)) registry.push(FRIEND_PAID);
@@ -264,7 +290,8 @@ export function buildView(
 		total,
 		title,
 		uncategorized,
-		summary
+		summary,
+		accountIds: accounts.map((a) => a.id)
 	};
 }
 

@@ -6,13 +6,23 @@ the figures around it. Bars are the default; filters persist in localStorage
 and the URL stays clean.
 
 Use the Chart / Overview selector to replace the graph with compact totals.
-Overview shows closing balances in balance mode and period totals in spending
-or income mode. Grouping, dates, visible series, and the Open / Closed
-checkboxes apply to both views. Select either account status or both.
-Both views keep the same width. Date controls appear only on Chart; the
-selected range stays saved in Overview. Other chart-only controls stay disabled.
-Unavailable balances are labeled explicitly and excluded from the subtotal.
-Tooltips omit amounts that display as zero.
+Overview shows closing balances in Balances mode and period totals in Activity
+mode. Activity shows spending, income, or their net flow; internal transfers
+are excluded in all three. Balances include transfers because they move money
+between accounts. The headline always states which measure it represents.
+
+Open / Closed, Cash / Investments, and Banks & cash / Wallets & rewards are
+independent multiselects. They filter both views, the totals, and coverage.
+By asset class groups the chart into Cash and Investments. Cash means balances
+outside brokerage and retirement accounts, net of credit-card debt. The
+wallets/rewards selection includes stored-value accounts and points snapshots;
+points are never added to monetary totals. Investment-only hides the points.
+
+Both views keep the same width and shared selector positions. Date controls
+appear only on Chart; the selected range stays saved in Overview. Other
+chart-only controls stay disabled. Unavailable balances are labeled explicitly
+and excluded from the subtotal. An all-unavailable selection has no dollar
+total. Tooltips omit amounts that display as zero.
 
 ## Data path
 

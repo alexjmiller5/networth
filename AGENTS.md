@@ -26,6 +26,13 @@ protects the site and every API route.
   Both views keep the same width and selector positions. Date controls are
   Chart-only; their selected range persists in Overview. Open and Closed
   are independent checkboxes; filtering must not change an entity's palette slot.
+- Balances and Activity are explicit measures. Selecting both spending and
+  income remains Activity, never implicitly switches to balance changes.
+  Internal transfers affect balances but no activity mode.
+- Cash / Investments and Banks & cash / Wallets & rewards selections apply
+  to account series, overview totals, and coverage. Stored-value accounts
+  belong to wallets/rewards; points snapshots appear with that selection,
+  separately from dollars. Asset-class grouping uses account types.
 - Account names follow the registry's effective-date history, with one stable
   ledger through product conversions. Account metadata lives in the data
   estate, never in source code. Tooltip rows that display as zero are hidden.
