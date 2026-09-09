@@ -83,4 +83,5 @@ export interface PointsBalance {
 	scrapedAt: string;
 }
 
-export type GroupBy = 'account' | 'bank' | 'type' | 'category';
+export type AssetClass = 'cash' | 'investments';
+export type GroupBy = 'account' | 'bank' | 'type' | 'asset' | 'category';

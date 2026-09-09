@@ -22,6 +22,9 @@
 	import IconBuildingBank from '@tabler/icons-svelte/icons/building-bank';
 	import IconWallet from '@tabler/icons-svelte/icons/wallet';
 	import IconCash from '@tabler/icons-svelte/icons/cash';
+	import IconChartPie from '@tabler/icons-svelte/icons/chart-pie';
+	import IconGift from '@tabler/icons-svelte/icons/gift';
+	import IconActivity from '@tabler/icons-svelte/icons/activity';
 	import {
 		PRESET_LABELS,
 		clampRange,
@@ -39,7 +42,7 @@
 		toggleHidden,
 		writeControls
 	} from '$lib/finance/controls';
-	import type { Bucket } from '$lib/finance/series';
+	import { accountGroup, type Bucket } from '$lib/finance/series';
 	import type { GroupBy } from '$lib/finance/types';
 	import type { Estate } from '$lib/finance/assemble';
 
@@ -81,7 +84,7 @@
 					...new Set(
 						[...accounts]
 							.sort((a, b) => a.id.localeCompare(b.id))
-							.map((a) => (groupBy === 'account' ? a.id : a[groupBy === 'bank' ? 'bank' : 'type']))
+							.map((a) => accountGroup(a, groupBy))
 					),
 					FRIEND_PAID
 				]
@@ -109,6 +112,7 @@
 	};
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
+		if (groupBy === 'asset') return key === 'cash' ? 'Cash' : 'Investments';
 		start = start < viewState.dateStart ? viewState.dateStart : start;
 		end = end > viewState.dateEnd ? viewState.dateEnd : end;
 		const account = accounts.find((a) => a.id === key);
@@ -129,6 +133,7 @@
 			: undefined;
 	}
 	function iconComponent(key: string) {
+		if (groupBy === 'asset') return key === 'cash' ? IconCash : IconChartPie;
 		if (
 			(groupBy === 'account' && accounts.find((a) => a.id === key)?.type === 'cash') ||
 			(groupBy === 'type' && key === 'cash')
@@ -168,8 +173,11 @@
 		missing: 'Missing transactions',
 		'investment-unvalued': 'Investment value unavailable'
 	};
+	const selectedCoverage = $derived(
+		data.coverage.filter((c) => view.accountIds.includes(c.account_id))
+	);
 	const incomplete = $derived(
-		data.coverage.some((c) => c.status !== 'verified' || c.basis !== 'money')
+		selectedCoverage.some((c) => c.status !== 'verified' || c.basis !== 'money')
 	);
 	async function refresh(): Promise<void> {
 		refreshing = true;
@@ -212,7 +220,7 @@
 					? 'Sum of the visible categorized amounts in this date range, using your shares and excluding internal transfers.'
 					: 'Sum of the visible verified transaction ledgers. Credit-card debt subtracts from the subtotal.'}
 			>
-				{money(view.total)}
+				{!view.isFlow && !view.data.series.length ? 'Unavailable' : money(view.total)}
 			</div>
 			<div class="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
 				{view.title}
@@ -240,6 +248,24 @@
 					label="Overview"
 				/></Select.Content
 			>
+		</Select.Root>
+		<Select.Root
+			type="single"
+			value={controls.measure}
+			onValueChange={(v) => {
+				controls.measure = v as 'balances' | 'activity';
+				if (v === 'balances' && controls.groupBy === 'category') controls.groupBy = 'account';
+			}}
+		>
+			<Select.Trigger class="min-h-9 w-36" aria-label="Measure">
+				{#if controls.measure === 'balances'}<IconWallet size={16} />Balances{:else}<IconActivity
+						size={16}
+					/>Activity{/if}
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="balances" label="Balances" />
+				<Select.Item value="activity" label="Activity" />
+			</Select.Content>
 		</Select.Root>
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
@@ -277,6 +303,79 @@
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="outline"
+						size="sm"
+						class="min-h-9 w-52 justify-between font-normal"
+						aria-label="Asset classes"
+					>
+						<IconChartPie size={16} />{controls.assetClasses.length === 2
+							? 'Cash & investments'
+							: controls.assetClasses[0] === 'cash'
+								? 'Cash'
+								: 'Investments'}<IconChevronDown size={16} />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content>
+				{#each ['cash', 'investments'] as const as asset (asset)}
+					<DropdownMenu.CheckboxItem
+						checked={controls.assetClasses.includes(asset)}
+						closeOnSelect={false}
+						onCheckedChange={(checked) => {
+							const next = checked
+								? [...controls.assetClasses, asset]
+								: controls.assetClasses.filter((a) => a !== asset);
+							controls.assetClasses = next.length ? next : ['cash', 'investments'];
+						}}>{asset === 'cash' ? 'Cash' : 'Investments'}</DropdownMenu.CheckboxItem
+					>
+				{/each}
+				<p class="max-w-64 px-2 py-1 text-xs text-muted-foreground">
+					Cash includes balances outside investment accounts, net of credit-card debt.
+				</p>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="outline"
+						size="sm"
+						class="min-h-9 w-48 justify-between font-normal"
+						aria-label="Balance sources"
+					>
+						<IconGift size={16} />{controls.balanceSources.length === 2
+							? 'All balances'
+							: controls.balanceSources[0] === 'accounts'
+								? 'Banks & cash'
+								: 'Wallets & rewards'}<IconChevronDown size={16} />
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content>
+				{#each ['accounts', 'rewards'] as const as source (source)}
+					<DropdownMenu.CheckboxItem
+						checked={controls.balanceSources.includes(source)}
+						closeOnSelect={false}
+						onCheckedChange={(checked) => {
+							const next = checked
+								? [...controls.balanceSources, source]
+								: controls.balanceSources.filter((s) => s !== source);
+							controls.balanceSources = next.length ? next : ['accounts', 'rewards'];
+						}}
+						>{source === 'accounts'
+							? 'Banks & cash'
+							: 'Wallets, gift cards & rewards'}</DropdownMenu.CheckboxItem
+					>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+
 		<Select.Root
 			type="single"
 			disabled={controls.presentation === 'overview'}
@@ -299,6 +398,7 @@
 			value={groupBy}
 			onValueChange={(v) => {
 				controls.groupBy = v as GroupBy;
+				if (v === 'category') controls.measure = 'activity';
 			}}
 		>
 			<Select.Trigger class="min-h-9">
@@ -309,12 +409,15 @@
 						? 'By bank'
 						: groupBy === 'type'
 							? 'By type'
-							: 'By category'}
+							: groupBy === 'asset'
+								? 'By asset class'
+								: 'By category'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Item value="account" label="By account" />
 				<Select.Item value="bank" label="By bank" />
 				<Select.Item value="type" label="By type" />
+				<Select.Item value="asset" label="By asset class" />
 				<Select.Item value="category" label="By category" />
 			</Select.Content>
 		</Select.Root>
@@ -348,6 +451,8 @@
 				{#snippet child({ props })}
 					<Button
 						{...props}
+						disabled={controls.measure === 'balances'}
+						aria-label="Activity direction"
 						variant={flowMode === 'both' ? 'outline' : 'default'}
 						size="sm"
 						class="min-h-9 font-normal"
@@ -390,7 +495,7 @@
 			value={view.cumulative ? 'cumulative' : 'bucket'}
 			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
 		>
-			<Select.Trigger class="min-h-9">
+			<Select.Trigger class="min-h-9 w-40">
 				<IconSum size={16} class="text-muted-foreground" />
 				{view.cumulative ? 'Cumulative' : 'Per bucket'}
 			</Select.Trigger>
@@ -554,7 +659,7 @@
 			data={view.data}
 			bucket={controls.bucket}
 			kind={controls.kind}
-			net={groupBy === 'category' && flowMode === 'both'}
+			net={view.isFlow && flowMode === 'both'}
 			{labelFor}
 			{iconFor}
 			{iconComponent}
@@ -592,9 +697,9 @@
 	</div>
 	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
 	<details class="rounded-lg border p-3">
-		<summary class="cursor-pointer text-sm">Balance coverage · all accounts</summary>
+		<summary class="cursor-pointer text-sm">Balance coverage · selected accounts</summary>
 		<ul class="mt-3 space-y-3 text-xs">
-			{#each data.coverage as c (c.account_id)}
+			{#each selectedCoverage as c (c.account_id)}
 				<li class="break-words">
 					<span class="font-medium"
 						>{accounts.find((a) => a.id === c.account_id)?.name ?? c.account_id}</span
@@ -609,23 +714,25 @@
 			{/each}
 		</ul>
 	</details>
-	<div>
-		<p class="mb-2 text-xs text-muted-foreground">
-			Points · all programs · latest snapshots on or before {viewState.dateEnd}
-		</p>
-		<div class="flex flex-wrap gap-2">
-			{#each selectedPoints as p (p.program)}
-				<div class="rounded-lg border px-3 py-2">
-					<div class="flex flex-wrap items-baseline gap-2">
-						<span class="text-sm font-medium">{p.program}</span><span class="text-sm tabular-nums"
-							>{p.points.toLocaleString('en-US')} pts</span
-						><span class="text-xs text-muted-foreground"
-							>{p.estValue === null ? 'Value unavailable' : `≈ ${money(p.estValue)}`}</span
-						>
+	{#if controls.balanceSources.includes('rewards') && controls.assetClasses.includes('cash')}
+		<div>
+			<p class="mb-2 text-xs text-muted-foreground">
+				Points · all programs · latest snapshots on or before {viewState.dateEnd}
+			</p>
+			<div class="flex flex-wrap gap-2">
+				{#each selectedPoints as p (p.program)}
+					<div class="rounded-lg border px-3 py-2">
+						<div class="flex flex-wrap items-baseline gap-2">
+							<span class="text-sm font-medium">{p.program}</span><span class="text-sm tabular-nums"
+								>{p.points.toLocaleString('en-US')} pts</span
+							><span class="text-xs text-muted-foreground"
+								>{p.estValue === null ? 'Value unavailable' : `≈ ${money(p.estValue)}`}</span
+							>
+						</div>
+						<p class="mt-1 text-xs text-muted-foreground">as of {p.scrapedAt?.slice(0, 10)}</p>
 					</div>
-					<p class="mt-1 text-xs text-muted-foreground">as of {p.scrapedAt?.slice(0, 10)}</p>
-				</div>
-			{/each}
+				{/each}
+			</div>
 		</div>
-	</div>
+	{/if}
 </main>

@@ -1,3 +1,4 @@
+import { assetClass } from './series';
 // Join raw finance facts with their judgment layer. Spending uses dated
 // shares; monetary balances use ledger effects verified against source gates.
 import type {
@@ -36,7 +37,6 @@ export interface Estate {
 
 const live = (r: HubRow): boolean => r.deleted_at == null;
 const str = (v: unknown): string => (v == null ? '' : String(v));
-const investment = (a: Account): boolean => ['brokerage', 'ira', '401k'].includes(a.type);
 
 function id(v: unknown): string {
 	if (typeof v !== 'string' || !v.trim()) throw new Error('Missing finance identity');
@@ -214,7 +214,7 @@ export function assemble(t: EstateTables): Estate {
 			const o = overlay.get(key);
 			const amount = num(r.amount);
 			const synthetic = flag(r.synthetic);
-			let balanceAmount: number | null = investment(a) ? null : amount;
+			let balanceAmount: number | null = assetClass(a) === 'investments' ? null : amount;
 			if (source === 'venmo' && !synthetic) {
 				const lines = statements.get(str(r.id)) ?? [];
 				// The stored link is authoritative: statement amounts can differ from
@@ -309,7 +309,7 @@ export function assemble(t: EstateTables): Estate {
 		if (!rows.length) {
 			c.status = 'missing';
 			c.reasons.push('No transaction history');
-		} else if (investment(a)) {
+		} else if (assetClass(a) === 'investments') {
 			c.status = 'investment-unvalued';
 			c.reasons.push(
 				'Investment market prices unavailable; cash or contributions are not market value'

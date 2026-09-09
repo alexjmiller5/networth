@@ -41,8 +41,13 @@ it('filters open, closed, or both across the chart, overview, groupings, and tot
 				cumulativeChoice: true
 			});
 			expect(buildView(rows, registry, categories, s).total).toBe(balance);
-			for (const groupBy of ['account', 'bank', 'type', 'category'] as const) {
-				const v = buildView(rows, registry, categories, { ...s, groupBy, flows: ['spending'] });
+			for (const groupBy of ['account', 'bank', 'type', 'asset', 'category'] as const) {
+				const v = buildView(rows, registry, categories, {
+					...s,
+					groupBy,
+					measure: 'activity',
+					flows: ['spending']
+				});
 				expect(v.total).toBe(spending);
 				expect(v.summary.filter((r) => r.value !== null).reduce((n, r) => n + r.value!, 0)).toBe(
 					spending
@@ -72,6 +77,110 @@ it('persists status selections, migrates old saves, and recovers invalid selecti
 		s
 	);
 	expect(restore(saved).accountStatuses).toEqual(['closed']);
+});
+
+it('separates internal transfers from activity while showing allocation changes in balances', () => {
+	const registry = [
+		accounts[0],
+		{ id: 'invest', name: 'Portfolio', bank: 'Broker', type: 'brokerage' as const }
+	];
+	const rows = [
+		{ account_id: 'account-1', date: min, amount: 100, synthetic: true },
+		{ account_id: 'account-1', date: max, amount: -40, internal: true, category: 'Transfer' },
+		{ account_id: 'invest', date: max, amount: 40, internal: true, category: 'Transfer' },
+		{ account_id: 'account-1', date: max, amount: -5, category: 'Category 1' },
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: 10,
+			category: 'Income',
+			categoryKind: 'income' as const
+		}
+	];
+	const balances = state({ measure: 'balances', groupBy: 'asset' });
+	expect(buildView(rows, registry, categories, balances).summary).toEqual([
+		{ key: 'cash', value: 65 },
+		{ key: 'investments', value: 40 }
+	]);
+	for (const groupBy of ['account', 'bank', 'type', 'asset', 'category'] as const) {
+		const activity = state({ measure: 'activity', groupBy });
+		expect(buildView(rows, registry, categories, activity).total).toBe(5);
+		for (const assetClasses of [['cash'], ['investments'], ['cash', 'investments']] as const) {
+			const s = { ...activity, assetClasses: [...assetClasses] };
+			expect(buildView(rows, registry, categories, s).total).toBe(
+				assetClasses.some((c) => c === 'cash') ? 5 : 0
+			);
+		}
+	}
+	expect(buildView(rows, registry, categories, { ...balances, assetClasses: ['cash'] }).total).toBe(
+		65
+	);
+	expect(
+		buildView(rows, registry, categories, { ...balances, assetClasses: ['investments'] }).total
+	).toBe(40);
+	expect(buildView(rows, registry, categories, balances).total).toBe(105);
+	const missing = [
+		{
+			account_id: 'invest',
+			status: 'investment-unvalued' as const,
+			basis: 'none' as const,
+			asOf: null,
+			firstTransaction: max,
+			lastTransaction: max,
+			transactionCount: 1,
+			reasons: ['Missing prices']
+		}
+	];
+	expect(
+		buildView(rows, registry, categories, { ...balances, assetClasses: ['investments'] }, missing)
+			.summary
+	).toEqual([{ key: 'investments', value: null }]);
+});
+
+it('persists asset filters and restores the previous balance or activity interpretation', () => {
+	expect(restore().measure).toBe('balances');
+	expect(state({ flows: ['spending'] }).measure).toBe('activity');
+	expect(state({ groupBy: 'category' }).measure).toBe('activity');
+	expect(state({ assetClasses: [] }).assetClasses).toEqual(['cash', 'investments']);
+	const s = state({ measure: 'activity', assetClasses: ['investments'], groupBy: 'asset' });
+	let saved = '';
+	writeControls(
+		{
+			setItem: (_key, value) => {
+				saved = value;
+			}
+		},
+		s
+	);
+	expect(restore(saved)).toEqual(s);
+});
+
+it('filters bank ledgers separately from stored value, and preserves the selection', () => {
+	const registry = [...accounts, { ...accounts[0], id: 'wallet', type: 'stored_value' as const }];
+	const rows = registry.map((a) => ({ account_id: a.id, date: min, amount: 10 }));
+	for (const [balanceSources, ids] of [
+		[['accounts'], ['account-1']],
+		[['rewards'], ['wallet']],
+		[
+			['accounts', 'rewards'],
+			['account-1', 'wallet']
+		]
+	] as const) {
+		const s = state({ balanceSources: [...balanceSources] });
+		const view = buildView(rows, registry, categories, s);
+		expect(view.accountIds).toEqual([...ids]);
+		expect(view.total).toBe(ids.length * 10);
+		let saved = '';
+		writeControls(
+			{
+				setItem: (_key, value) => {
+					saved = value;
+				}
+			},
+			s
+		);
+		expect(restore(saved).balanceSources).toEqual([...balanceSources]);
+	}
 });
 
 it('shows missing balances as unavailable instead of zero in the overview', () => {
@@ -108,7 +217,7 @@ describe('control persistence', () => {
 			state({
 				bucket: 'month',
 				groupBy: 'bank',
-				hidden: { account: ['a'], bank: [], type: [], category: [] }
+				hidden: { account: ['a'], bank: [], type: [], asset: [], category: [] }
 			})
 		).toMatchObject({
 			bucket: 'month',
@@ -134,7 +243,13 @@ describe('control persistence', () => {
 			cumulativeChoice: false,
 			kind: 'line'
 		});
-		s.hidden = { account: ['a'], bank: ['A, B & C'], type: ['checking'], category: ['Category 2'] };
+		s.hidden = {
+			account: ['a'],
+			bank: ['A, B & C'],
+			type: ['checking'],
+			asset: [],
+			category: ['Category 2']
+		};
 		let saved = '';
 		expect(
 			writeControls(
@@ -192,6 +307,7 @@ describe('control persistence', () => {
 
 describe('page chart view', () => {
 	it('counts omitted uncategorized pieces within dates, direction and account filters, never unknown catalog categories', () => {
+		const registry = [...accounts, { ...accounts[0], id: 'account-2' }];
 		const rows = [
 			{ account_id: 'account-1', date: min, amount: -8 },
 			{ account_id: 'account-2', date: min, amount: -4 },
@@ -210,13 +326,13 @@ describe('page chart view', () => {
 		];
 		const selection = state({
 			flows: ['spending'],
-			hidden: { account: ['account-2'], bank: [], type: [], category: [] }
+			hidden: { account: ['account-2'], bank: [], type: [], asset: [], category: [] }
 		});
-		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(1);
+		expect(buildView(rows, registry, categories, selection).uncategorized).toBe(1);
 		selection.groupBy = 'category';
-		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(2);
+		expect(buildView(rows, registry, categories, selection).uncategorized).toBe(2);
 		selection.flows = ['income'];
-		expect(buildView(rows, accounts, categories, selection).uncategorized).toBe(1);
+		expect(buildView(rows, registry, categories, selection).uncategorized).toBe(1);
 	});
 	it('counts shares and friend-paid spending under every grouping while balances stay raw', () => {
 		const txns = [

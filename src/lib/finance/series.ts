@@ -3,7 +3,7 @@
 // (the estate's derive-from-txns rule), so bucketing takes each bucket's
 // LAST value, never a sum.
 
-import type { Account, AccountCoverage, GroupBy, Txn } from './types';
+import type { Account, AccountCoverage, AssetClass, GroupBy, Txn } from './types';
 import { addDays } from './presets';
 
 export interface StackedSeries {
@@ -71,6 +71,17 @@ export function deriveBalances(
 	return { dates, series };
 }
 
+export function assetClass(account: Account): AssetClass {
+	return ['brokerage', 'ira', '401k'].includes(account.type) ? 'investments' : 'cash';
+}
+
+export function accountGroup(account: Account, groupBy: GroupBy): string {
+	if (groupBy === 'account') return account.id;
+	if (groupBy === 'bank') return account.bank;
+	if (groupBy === 'asset') return assetClass(account);
+	return account.type;
+}
+
 /** Merge account series into bank/type groups (sum - balances add across
  * accounts). 'account' passes through. */
 export function groupSeries(
@@ -79,7 +90,7 @@ export function groupSeries(
 	groupBy: GroupBy
 ): StackedSeries {
 	if (groupBy === 'account') return s;
-	const groupOf = new Map(accounts.map((a) => [a.id, groupBy === 'bank' ? a.bank : a.type]));
+	const groupOf = new Map(accounts.map((a) => [a.id, accountGroup(a, groupBy)]));
 	const merged = new Map<string, number[]>();
 	for (const ser of s.series) {
 		const key = groupOf.get(ser.key) ?? ser.key;
