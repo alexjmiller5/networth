@@ -9,6 +9,10 @@ protects the site and every API route.
 - `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
+  The hub is another Worker, so `global_fetch_strictly_public` must stay
+  enabled for the public URL read path. Local runtime tests cannot prove
+  Cloudflare's production routing; verify an authenticated API response
+  after deploying.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
