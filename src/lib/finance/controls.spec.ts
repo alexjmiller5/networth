@@ -7,6 +7,45 @@ import {
 	toggleHidden,
 	pointsAt
 } from './controls';
+import { accountLabel } from './controls';
+
+it('labels a converted account by the dates shown without changing its identity', () => {
+	const a = {
+		id: 'card',
+		name: 'Current card',
+		bank: 'Bank',
+		type: 'credit_card' as const,
+		nameHistory: [{ name: 'Original card', until: '2026-02-10' }]
+	};
+	expect(accountLabel(a, '2026-02-09')).toBe('Original card');
+	expect(accountLabel(a, '2026-02-10')).toBe('Current card');
+	expect(accountLabel(a, '2026-02-01', '2026-03-01')).toBe('Original card / Current card');
+});
+
+it('keeps overview and closed-account preferences, excluding closed ledgers from every grouping', () => {
+	const s = state({ presentation: 'overview', includeClosed: false, cumulativeChoice: false });
+	expect(s).toMatchObject({ presentation: 'overview', includeClosed: false });
+	const registry = [...accounts, { ...accounts[0], id: 'closed', closed: true }];
+	const rows = [
+		{ account_id: 'account-1', date: min, amount: 100 },
+		{ account_id: 'account-1', date: max, amount: -30, category: 'Category 1' },
+		{ account_id: 'closed', date: max, amount: -10, category: 'Category 1' }
+	];
+	expect(buildView(rows, registry, categories, s).total).toBe(70);
+	for (const groupBy of ['account', 'bank', 'type', 'category'] as const) {
+		const v = buildView(rows, registry, categories, { ...s, groupBy, flows: ['spending'] });
+		expect(v.total).toBe(30);
+		expect(v.summary.filter((r) => r.value !== null).reduce((n, r) => n + r.value!, 0)).toBe(30);
+		expect(v.keys).not.toContain('closed');
+	}
+	expect(buildView(rows, registry, categories, { ...s, includeClosed: true }).total).toBe(60);
+	expect(s.cumulativeChoice).toBe(false);
+});
+
+it('shows missing balances as unavailable instead of zero in the overview', () => {
+	const v = buildView([], accounts, categories, state({ presentation: 'overview' }), []);
+	expect(v.summary).toEqual([{ key: 'account-1', value: null }]);
+});
 
 const min = '2026-01-01';
 const max = '2026-03-31';

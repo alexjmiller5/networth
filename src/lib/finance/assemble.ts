@@ -97,6 +97,17 @@ function object(v: unknown): HubRow {
 
 export function assemble(t: EstateTables): Estate {
 	const accounts: Account[] = t.accounts.filter(live).map((r) => {
+		const history =
+			typeof r.name_history === 'string' ? JSON.parse(r.name_history) : (r.name_history ?? []);
+		if (!Array.isArray(history)) throw new Error('Invalid account name history');
+		const nameHistory = history.map((entry: HubRow, i: number) => {
+			const until = date(entry?.until);
+			if (i > 0 && until <= history[i - 1].until) throw new Error('Invalid account name history');
+			return { name: id(entry.name), until };
+		});
+		const logo = str(r.logo) || undefined;
+		if (logo && (!logo.startsWith('data:image/svg+xml,') || logo.length > 100_000))
+			throw new Error('Invalid account logo');
 		if (
 			![
 				'checking',
@@ -118,7 +129,10 @@ export function assemble(t: EstateTables): Estate {
 			name: str(r.name),
 			type: str(r.type) as AccountType,
 			source: id(r.source),
-			currency: str(r.currency)
+			currency: str(r.currency),
+			closed: flag(r.is_closed) || r.closed != null,
+			nameHistory,
+			logo
 		};
 	});
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));

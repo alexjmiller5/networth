@@ -5,6 +5,13 @@ shares its date range, grouping, visible series, and display controls with
 the figures around it. Bars are the default; filters persist in localStorage
 and the URL stays clean.
 
+Use the Chart / Overview selector to replace the graph with compact totals.
+Overview shows closing balances in balance mode and period totals in spending
+or income mode. Grouping, dates, visible series, and the Open & closed filter
+apply to both views. Chart-only controls stay saved while disabled in Overview.
+Unavailable balances are labeled explicitly and excluded from the subtotal.
+Tooltips omit amounts that display as zero.
+
 ## Data path
 
 The browser requests `/api/finance` from the SvelteKit Worker. That route
@@ -33,6 +40,12 @@ not cached. Cloudflare Access protects the entire site and API.
 The source tables and financial invariants belong to the data estate.
 Networth does not scrape banks, change categories, or repair financial data.
 Refresh reloads hub data; it does not initiate a bank sync.
+
+Account metadata can include `is_closed` (known status without inventing a
+closure date), `name_history` (chronological `{name, until}` intervals with
+exclusive ISO dates), and `logo` (an inline SVG data URI). Product conversions
+change dated labels, never account identities or transaction ledgers. The
+current name applies after the last historical interval.
 
 ## Configuration and development
 

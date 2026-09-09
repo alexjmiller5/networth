@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { assemble, type EstateTables } from './assemble';
 import { deriveBalances, flowSeries } from './series';
 
+it('reads closed status and effective names from account metadata, rejecting invalid timelines', () => {
+	const t = structuredClone(tables);
+	t.accounts[0].is_closed = 1;
+	t.accounts[0].name_history = '[{"name":"Prior name","until":"2026-02-10"}]';
+	expect(assemble(t).accounts[0]).toMatchObject({
+		closed: true,
+		nameHistory: [{ name: 'Prior name', until: '2026-02-10' }]
+	});
+	t.accounts[0].name_history = '[{"name":"Prior name","until":"2026-02-30"}]';
+	expect(() => assemble(t)).toThrow('Invalid finance date');
+	t.accounts[0].name_history =
+		'[{"name":"One","until":"2026-03-01"},{"name":"Two","until":"2026-02-01"}]';
+	expect(() => assemble(t)).toThrow('Invalid account name history');
+});
+
 const tables: EstateTables = {
 	accounts: [
 		{
@@ -263,7 +278,10 @@ describe('assemble', () => {
 				name: 'Checking',
 				type: 'checking',
 				source: 'bofa',
-				currency: 'USD'
+				currency: 'USD',
+				closed: false,
+				nameHistory: [],
+				logo: undefined
 			}
 		]);
 	});
