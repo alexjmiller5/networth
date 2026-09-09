@@ -2,7 +2,9 @@
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "networth",
 	"compatibility_date": "2026-07-06",
-	"compatibility_flags": ["nodejs_als"],
+	// The hub is another Worker: route fetch through its public URL rather
+	// than Cloudflare's same-zone origin path, which does not invoke it.
+	"compatibility_flags": ["nodejs_als", "global_fetch_strictly_public"],
 	"main": ".svelte-kit/cloudflare/_worker.js",
 	"assets": {
 		"binding": "ASSETS",
