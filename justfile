@@ -25,7 +25,11 @@ logs:
     bunx wrangler tail
 
 
+# Push .env.tpl secrets to the Worker (no plaintext touches disk)
+sync-secrets:
+    ./scripts/sync-secrets.sh
+
 deploy: test build
-    bunx wrangler deploy
+    ./scripts/sync-secrets.sh --deploy
 
 # --- project-specific recipes below (one-offs live in scripts/, run directly) ---

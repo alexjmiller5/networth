@@ -9,5 +9,11 @@
 		"directory": ".svelte-kit/cloudflare"
 	},
 	"workers_dev": true,
-	"preview_urls": true
+	"preview_urls": false,
+	"secrets": { "required": ["LIFE_HUB_TOKEN"] },
+	// Where the estate lives. The read token (LIFE_HUB_TOKEN) is a Worker
+	// secret pushed by scripts/sync-secrets.sh, never a var.
+	"vars": {
+		"LIFE_HUB_URL": "https://life-data.nqipomyrjb.workers.dev"
+	}
 }

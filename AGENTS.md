@@ -1,8 +1,39 @@
 # AGENTS.md
 
-Website on Cloudflare Workers with static assets: Svelte 5 frontend +
-optional thin co-located API (server routes → the same Worker). This is the
-template for every site, dashboard, and site-attached backend.
+Networth runs on Cloudflare Workers with static assets: a Svelte 5 frontend
+and a thin SvelteKit API compiled into the same Worker. Cloudflare Access
+protects the site and every API route.
+
+## Financial data contract
+
+- `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
+  `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
+  evidence nor credentials belong in browser output, fixtures, or git.
+- The assembler joins raw transactions to overlays and dated shares. A
+  category belongs to the overlay or shares, never both. Standalone shares
+  have no bank account and affect spending only.
+- Raw ledger amounts derive monetary balances. Venmo statement evidence
+  removes externally funded movements from its balance calculation.
+  Shares, categories, exclusions, and stated balances never overwrite raw
+  amounts. Stated balances are verification evidence only.
+- Synthetic openings and internal transfers affect balances, not spending.
+  Refunds reduce their spending category. Missing or malformed money is
+  rejected rather than replaced with zero.
+- Investment valuations require holdings and price history. Missing history,
+  unreconciled accounts, and unavailable valuations remain explicit in
+  coverage and cannot be presented as verified complete net worth.
+- Bars are the default. Date, grouping, visible series, and chart mode must
+  agree with headline figures and survive refresh. Show every category;
+  never aggregate the tail into an invented Other category.
+- Use the life-data catalog for category names, kinds, and icons. Do not
+  encode the owner's taxonomy or transaction data in this repository.
+- Unit tests live beside the code. Endpoint tests cover credential isolation
+  and malformed upstream data; financial tests cover shares, refunds, and
+  balance reconciliation. Run `uv run --with httpx python scripts/test_provision.py`
+  for credential provisioning and deployment transport checks.
+- `scripts/sync-secrets.sh --deploy` passes code and the runtime secret in
+  one Wrangler deploy, with secret data on stdin only. CI runs this after
+  tests, static checks, formatting checks, and the production build.
 
 ## Architecture rules
 
@@ -218,41 +249,6 @@ verify the run with the gh CLI (`gh run watch <id> --exit-status`; on failure
 Write the test first (`*.spec.ts` next to the code, or `src/**/*.svelte.spec.ts`
 for components), then the code. Delete `src/lib/vitest-examples/` once real
 tests exist.
-
-## New-project checklist (delete this section after setup)
-
-1. Rename `name` in `wrangler.jsonc` and `package.json`.
-2. Fill `@theme` tokens in `src/routes/layout.css`; adjust the shadcn-svelte
-   `:root`/`.dark` variables there if the project needs its own palette.
-3. Site basics: `<Seo>` title/description CHANGEMEs, `static/llms.txt`,
-   theme-color metas in `app.html`, and purpose-driven icons - favicon.svg
-   AND apple-touch-icon.png (compose for this site; never ship the template
-   defaults). Restyle `+error.svelte` with the theme.
-4. Forms: run the abuse ladder; offer Turnstile with this site's tradeoffs -
-   keep + wire the shipped turnstile files if adopted, delete them if not.
-5. Sitemap: content site → fill routes + uncomment robots.txt line;
-   dashboard → delete `src/routes/sitemap.xml/`.
-6. Fill `.env.tpl` if the site needs secrets; `just sync-secrets`. A site with
-   no runtime secrets keeps the tpl empty - CI deploy creds live only in
-   `deploy.yml`.
-   Analytics: ASK Alex whether this site gets analytics (internal/CF-Access
-   sites default no → delete the wiring per the Analytics bullet above).
-   Adopted → create this app's own PostHog project and fill
-   `PUBLIC_POSTHOG_KEY` in `wrangler.jsonc` (API call in the Analytics
-   bullet above).
-7. `scripts/provision.py`: set `NAME` to the project slug and adjust the
-   deploy-token permission groups to what this site deploys (R2/D1/KV).
-   Machine-mintable secrets never prompt - `op-project-bootstrap` calls it
-   for the CI Cloudflare Token item (api-token + account-id); add minters for any other
-   API-creatable credential (Resend, Turnstile, random tokens - shapes in
-   acl-price-watch).
-8. Custom domain / D1 / R2: add to `wrangler.jsonc`, then `bun run gen`;
-   R2 buckets: `scripts/cf-r2.py` creates the declared ones. No R2 → delete
-   that script.
-9. Vault + CI: Alex runs `op-project-bootstrap .env.tpl --repo <owner/name>` — creates the project vault, the `<Project> ENV` item, the read-only CI SA, and sets the repo's `OP_SERVICE_ACCOUNT_TOKEN`.
-10. If private: `scripts/cf-access.py --name <site> --domain <host> --email <you>`
-    (add `--pwa` if it's a homescreen app). Public site → delete
-    `scripts/cf-access.py`.
 
 ## Hardcoded owner assumptions
 

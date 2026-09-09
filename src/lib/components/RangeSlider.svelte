@@ -4,6 +4,7 @@
 	// click the track to jump the nearest handle. Touch gets bigger targets.
 	// Restyled from that app's palette to this one's theme tokens.
 	import { onMount, onDestroy } from 'svelte';
+	import { addDays } from '$lib/finance/presets';
 
 	interface Props {
 		min: string;
@@ -38,21 +39,15 @@
 
 	onDestroy(() => {
 		touchMql?.removeEventListener('change', syncIsTouch);
+		handlePointerUp();
 	});
 
 	function dateToOffset(date: string): number {
-		const d = new Date(date + 'T00:00:00');
-		const m = new Date(min + 'T00:00:00');
-		return Math.round((d.getTime() - m.getTime()) / 86400000);
+		return Math.round((Date.parse(date) - Date.parse(min)) / 86400000);
 	}
 
 	function offsetToDate(offset: number): string {
-		const m = new Date(min + 'T00:00:00');
-		const d = new Date(m.getTime() + offset * 86400000);
-		const y = d.getFullYear();
-		const mo = String(d.getMonth() + 1).padStart(2, '0');
-		const day = String(d.getDate()).padStart(2, '0');
-		return `${y}-${mo}-${day}`;
+		return addDays(min, offset);
 	}
 
 	let totalDays = $derived(dateToOffset(max));
@@ -109,10 +104,10 @@
 		const deltaDays = Math.round((deltaPx / rect.width) * totalDays);
 
 		if (dragging === 'start') {
-			const newStart = Math.max(0, Math.min(endOffset - 1, dragStartVal + deltaDays));
+			const newStart = Math.max(0, Math.min(endOffset, dragStartVal + deltaDays));
 			onchange(offsetToDate(newStart), end);
 		} else if (dragging === 'end') {
-			const newEnd = Math.max(startOffset + 1, Math.min(totalDays, dragEndVal + deltaDays));
+			const newEnd = Math.max(startOffset, Math.min(totalDays, dragEndVal + deltaDays));
 			onchange(start, offsetToDate(newEnd));
 		} else if (dragging === 'range') {
 			const rangeSize = dragEndVal - dragStartVal;
@@ -145,10 +140,38 @@
 		const distToStart = Math.abs(offset - startOffset);
 		const distToEnd = Math.abs(offset - endOffset);
 		if (distToStart < distToEnd) {
-			onchange(offsetToDate(Math.min(offset, endOffset - 1)), end);
+			onchange(offsetToDate(Math.min(offset, endOffset)), end);
 		} else {
-			onchange(start, offsetToDate(Math.max(offset, startOffset + 1)));
+			onchange(start, offsetToDate(Math.max(offset, startOffset)));
 		}
+	}
+
+	function handleKey(e: KeyboardEvent, handle: 'start' | 'end'): void {
+		const current = handle === 'start' ? startOffset : endOffset;
+		const lower = handle === 'start' ? 0 : startOffset;
+		const upper = handle === 'start' ? endOffset : totalDays;
+		const steps: Record<string, number> = {
+			ArrowLeft: -1,
+			ArrowDown: -1,
+			ArrowRight: 1,
+			ArrowUp: 1,
+			PageDown: -7,
+			PageUp: 7
+		};
+		const next =
+			e.key === 'Home'
+				? lower
+				: e.key === 'End'
+					? upper
+					: e.key in steps
+						? current + steps[e.key]
+						: null;
+		if (next === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const value = offsetToDate(Math.max(lower, Math.min(upper, next)));
+		if (handle === 'start') onchange(value, end);
+		else onchange(start, value);
 	}
 
 	// Handle sizes scale up on touch so the hit area is closer to 44×44
@@ -256,13 +279,20 @@
         height: {handleSize('start')}px;
       "
 			onpointerdown={(e) => handlePointerDown(e, 'start')}
+			onkeydown={(e) => handleKey(e, 'start')}
 			onmouseenter={() => {
 				if (!dragging) hovered = 'start';
 			}}
 			onmouseleave={() => {
 				if (!dragging) hovered = null;
 			}}
-			role="presentation"
+			role="slider"
+			tabindex="0"
+			aria-label="Start date"
+			aria-valuemin={0}
+			aria-valuemax={endOffset}
+			aria-valuenow={startOffset}
+			aria-valuetext={formatLabel(start)}
 		></div>
 
 		<!-- End handle -->
@@ -276,13 +306,20 @@
         height: {handleSize('end')}px;
       "
 			onpointerdown={(e) => handlePointerDown(e, 'end')}
+			onkeydown={(e) => handleKey(e, 'end')}
 			onmouseenter={() => {
 				if (!dragging) hovered = 'end';
 			}}
 			onmouseleave={() => {
 				if (!dragging) hovered = null;
 			}}
-			role="presentation"
+			role="slider"
+			tabindex="0"
+			aria-label="End date"
+			aria-valuemin={startOffset}
+			aria-valuemax={totalDays}
+			aria-valuenow={endOffset}
+			aria-valuetext={formatLabel(end)}
 		></div>
 	</div>
 

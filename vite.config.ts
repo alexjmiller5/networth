@@ -23,6 +23,8 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
+					// Load the installed icon catalog through Vite's JSON loader in tests too.
+					server: { deps: { inline: [/tabler-nodes-outline\.json/] } },
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
 				}

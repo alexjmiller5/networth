@@ -7,9 +7,6 @@ on:
 
 jobs:
   deploy:
-    # The template repo itself has nothing to deploy (CHANGEME creds) - every
-    # push showed a red X. Scaffolded repos have a different name, so they run.
-    if: github.repository != 'alexjmiller5/cf-site'
     runs-on: ubuntu-latest
     # The one GH secret: this project's 1Password service-account token (see
     # new-project skill). It authenticates op for BOTH reading the deploy creds
@@ -32,5 +29,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: op://Networth/Networth CI Cloudflare Token/account-id
       - run: bun install --frozen-lockfile
       - run: bun run test
+      - run: bun run check
+      - run: bun run lint
       - run: bun run build
-      - run: bunx wrangler deploy
+      - name: Deploy Worker and runtime secret
+        run: ./scripts/sync-secrets.sh --deploy
