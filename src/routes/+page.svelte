@@ -157,7 +157,11 @@
 		controls.dateEnd = next.end;
 	}
 	const money = (v: number): string =>
-		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+		(v === 0 ? 0 : v).toLocaleString('en-US', {
+			style: 'currency',
+			currency: 'USD',
+			maximumFractionDigits: 2
+		});
 	const coverageLabels = {
 		verified: 'Verified',
 		unverified: 'Unverified',
@@ -195,7 +199,11 @@
 
 <Seo title="networth" description="Money over time, across every account." />
 
-<main class="mx-auto flex max-w-5xl flex-col gap-4 p-4 sm:p-6">
+<main
+	class="mx-auto flex flex-col gap-4 p-4 sm:p-6 {controls.presentation === 'overview'
+		? 'max-w-7xl'
+		: 'max-w-5xl'}"
+>
 	<header class="flex flex-wrap items-end justify-between gap-2">
 		<div>
 			<h1 class="text-lg font-semibold tracking-tight">networth</h1>
@@ -471,7 +479,10 @@
 		onchange={setDates}
 	/>
 	{#if controls.presentation === 'overview'}
-		<section aria-label={view.title} class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+		<section
+			aria-label={view.title}
+			class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+		>
 			{#each view.summary as row (row.key)}
 				{@const account =
 					groupBy === 'account' ? accounts.find((a) => a.id === row.key) : undefined}
@@ -479,11 +490,16 @@
 					? data.coverage.find((c) => c.account_id === account.id)
 					: undefined}
 				<article
-					class="flex min-w-0 flex-col gap-1 rounded-md border p-3"
+					class="flex min-w-0 flex-col gap-1 rounded-md border p-2"
 					title={row.value === null && !view.isFlow ? coverage?.reasons.join(' · ') : undefined}
 				>
 					<div class="flex items-start gap-2 text-xs">
-						{#if iconFor(row.key)}<span
+						{#if iconFor(row.key) && (groupBy === 'account' || groupBy === 'bank')}<img
+								src={iconFor(row.key)}
+								alt=""
+								class="size-5 shrink-0 rounded-sm bg-white p-0.5"
+							/>
+						{:else if iconFor(row.key)}<span
 								class="series-icon mt-0.5 shrink-0"
 								style:mask-image={`url("${iconFor(row.key)}")`}
 								aria-hidden="true"

@@ -127,7 +127,11 @@
 	}
 
 	const money = (v: number): string =>
-		v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+		(v === 0 ? 0 : v).toLocaleString('en-US', {
+			style: 'currency',
+			currency: 'USD',
+			maximumFractionDigits: 2
+		});
 	const moneyTick = (v: number): string =>
 		Math.abs(v) >= 1000
 			? `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
