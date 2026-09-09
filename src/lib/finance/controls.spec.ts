@@ -22,24 +22,56 @@ it('labels a converted account by the dates shown without changing its identity'
 	expect(accountLabel(a, '2026-02-01', '2026-03-01')).toBe('Original card / Current card');
 });
 
-it('keeps overview and closed-account preferences, excluding closed ledgers from every grouping', () => {
-	const s = state({ presentation: 'overview', includeClosed: false, cumulativeChoice: false });
-	expect(s).toMatchObject({ presentation: 'overview', includeClosed: false });
+it('filters open, closed, or both across the chart, overview, groupings, and totals', () => {
 	const registry = [...accounts, { ...accounts[0], id: 'closed', closed: true }];
 	const rows = [
 		{ account_id: 'account-1', date: min, amount: 100 },
 		{ account_id: 'account-1', date: max, amount: -30, category: 'Category 1' },
 		{ account_id: 'closed', date: max, amount: -10, category: 'Category 1' }
 	];
-	expect(buildView(rows, registry, categories, s).total).toBe(70);
-	for (const groupBy of ['account', 'bank', 'type', 'category'] as const) {
-		const v = buildView(rows, registry, categories, { ...s, groupBy, flows: ['spending'] });
-		expect(v.total).toBe(30);
-		expect(v.summary.filter((r) => r.value !== null).reduce((n, r) => n + r.value!, 0)).toBe(30);
-		expect(v.keys).not.toContain('closed');
+	for (const presentation of ['chart', 'overview'] as const) {
+		for (const [accountStatuses, spending, balance] of [
+			[['open'], 30, 70],
+			[['closed'], 10, -10],
+			[['open', 'closed'], 40, 60]
+		] as const) {
+			const s = state({
+				presentation,
+				accountStatuses: [...accountStatuses],
+				cumulativeChoice: true
+			});
+			expect(buildView(rows, registry, categories, s).total).toBe(balance);
+			for (const groupBy of ['account', 'bank', 'type', 'category'] as const) {
+				const v = buildView(rows, registry, categories, { ...s, groupBy, flows: ['spending'] });
+				expect(v.total).toBe(spending);
+				expect(v.summary.filter((r) => r.value !== null).reduce((n, r) => n + r.value!, 0)).toBe(
+					spending
+				);
+			}
+			const v = buildView(rows, registry, categories, s);
+			expect(v.keys.includes('closed')).toBe(s.accountStatuses.includes('closed'));
+			expect(v.keys.includes('account-1')).toBe(s.accountStatuses.includes('open'));
+		}
 	}
-	expect(buildView(rows, registry, categories, { ...s, includeClosed: true }).total).toBe(60);
-	expect(s.cumulativeChoice).toBe(false);
+});
+
+it('persists status selections, migrates old saves, and recovers invalid selections', () => {
+	expect(restore('{"includeClosed":false}').accountStatuses).toEqual(['open']);
+	expect(restore('{"includeClosed":true}').accountStatuses).toEqual(['open', 'closed']);
+	for (const saved of ['{}', '{"accountStatuses":[]}', '{"accountStatuses":["invalid"]}']) {
+		expect(restore(saved).accountStatuses).toEqual(['open', 'closed']);
+	}
+	let saved = '';
+	const s = state({ accountStatuses: ['closed'] });
+	writeControls(
+		{
+			setItem: (_key, value) => {
+				saved = value;
+			}
+		},
+		s
+	);
+	expect(restore(saved).accountStatuses).toEqual(['closed']);
 });
 
 it('shows missing balances as unavailable instead of zero in the overview', () => {

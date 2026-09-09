@@ -199,11 +199,7 @@
 
 <Seo title="networth" description="Money over time, across every account." />
 
-<main
-	class="mx-auto flex flex-col gap-4 p-4 sm:p-6 {controls.presentation === 'overview'
-		? 'max-w-7xl'
-		: 'max-w-5xl'}"
->
+<main class="mx-auto flex max-w-7xl flex-col gap-4 p-4 sm:p-6">
 	<header class="flex flex-wrap items-end justify-between gap-2">
 		<div>
 			<h1 class="text-lg font-semibold tracking-tight">networth</h1>
@@ -233,7 +229,183 @@
 			value={controls.presentation}
 			onValueChange={(v) => (controls.presentation = v as 'chart' | 'overview')}
 		>
-			<Select.Trigger class="min-h-9" aria-label="View">
+			<Select.Trigger class="min-h-9 w-32" aria-label="View">
+				<Select.Root
+					type="single"
+					disabled={controls.presentation === 'overview'}
+					value={controls.bucket}
+					onValueChange={(v) => (controls.bucket = v as Bucket)}
+				>
+					<Select.Trigger class="min-h-9">
+						<IconCalendarStats size={16} class="text-muted-foreground" />
+						{controls.bucket === 'day'
+							? 'Daily'
+							: controls.bucket === 'week'
+								? 'Weekly'
+								: 'Monthly'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="day" label="Daily" />
+						<Select.Item value="week" label="Weekly" />
+						<Select.Item value="month" label="Monthly" />
+					</Select.Content>
+				</Select.Root>
+
+				<Select.Root
+					type="single"
+					value={groupBy}
+					onValueChange={(v) => {
+						controls.groupBy = v as GroupBy;
+					}}
+				>
+					<Select.Trigger class="min-h-9">
+						<IconStack2 size={16} class="text-muted-foreground" />
+						{groupBy === 'account'
+							? 'By account'
+							: groupBy === 'bank'
+								? 'By bank'
+								: groupBy === 'type'
+									? 'By type'
+									: 'By category'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="account" label="By account" />
+						<Select.Item value="bank" label="By bank" />
+						<Select.Item value="type" label="By type" />
+						<Select.Item value="category" label="By category" />
+					</Select.Content>
+				</Select.Root>
+
+				<Select.Root
+					type="single"
+					disabled={controls.presentation === 'overview'}
+					value={controls.kind}
+					onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
+				>
+					<Select.Trigger class="min-h-9">
+						{#if controls.kind === 'area'}
+							<IconChartAreaFilled size={16} class="text-muted-foreground" />
+							Area
+						{:else if controls.kind === 'line'}
+							<IconChartLine size={16} class="text-muted-foreground" /> Line
+						{:else}
+							<IconChartBar size={16} class="text-muted-foreground" />
+							Bars
+						{/if}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="area" label="Area" />
+						<Select.Item value="bar" label="Bars" />
+						<Select.Item value="line" label="Line" />
+					</Select.Content>
+				</Select.Root>
+
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant={flowMode === 'both' ? 'outline' : 'default'}
+								size="sm"
+								class="min-h-9 font-normal"
+							>
+								<IconArrowsDownUp
+									size={16}
+									class={flowMode === 'both' ? 'text-muted-foreground' : ''}
+								/>
+								{flowMode === 'both'
+									? 'Spending & Income'
+									: flowMode === 'spending'
+										? 'Spending'
+										: 'Income'}
+								<IconChevronDown
+									size={16}
+									class={flowMode === 'both' ? 'text-muted-foreground' : ''}
+								/>
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content class="w-44">
+						{#each ['spending', 'income'] as const as dir (dir)}
+							<DropdownMenu.CheckboxItem
+								checked={controls.flows.includes(dir)}
+								closeOnSelect={false}
+								onCheckedChange={(checked) => {
+									const next = checked
+										? [...controls.flows, dir]
+										: controls.flows.filter((f) => f !== dir);
+									// empty selection means nothing to plot - snap back to both
+									controls.flows = next.length === 0 ? ['spending', 'income'] : next;
+								}}
+							>
+								{dir === 'spending' ? 'Spending' : 'Income'}
+							</DropdownMenu.CheckboxItem>
+						{/each}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+
+				<Select.Root
+					type="single"
+					disabled={controls.presentation === 'overview'}
+					value={view.cumulative ? 'cumulative' : 'bucket'}
+					onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
+				>
+					<Select.Trigger class="min-h-9">
+						<IconSum size={16} class="text-muted-foreground" />
+						{view.cumulative ? 'Cumulative' : 'Per bucket'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="bucket" label="Per bucket" />
+						<Select.Item value="cumulative" label="Cumulative" />
+					</Select.Content>
+				</Select.Root>
+
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant={excluded.length ? 'default' : 'outline'}
+								size="sm"
+								class="min-h-9 font-normal"
+							>
+								<IconFilter size={16} class="text-muted-foreground" />
+								{excluded.length === 0 ? 'All series' : `Hiding ${excluded.length}`}
+								<IconChevronDown size={16} class="text-muted-foreground" />
+							</Button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content class="max-h-96 w-64 overflow-y-auto">
+						<div class="sticky top-0 z-10 bg-popover pb-2">
+							<Input bind:value={search} aria-label="Search series" placeholder="Search series" />
+						</div>
+						{#each filterKeys as key (key)}
+							<DropdownMenu.CheckboxItem
+								checked={!excluded.includes(key)}
+								disabled={!view.applicable.includes(key)}
+								closeOnSelect={false}
+								onCheckedChange={() => toggleSeries(key)}
+							>
+								{#if iconFor(key)}<span
+										class="series-icon mr-1.5"
+										style:mask-image={`url("${iconFor(key)}")`}
+										aria-hidden="true"
+									></span>{:else}{@const Icon = iconComponent(key)}<Icon
+										size={16}
+										class="mr-1.5"
+									/>{/if}
+								{labelFor(key)}
+							</DropdownMenu.CheckboxItem>
+						{/each}
+						{#if excluded.length > 0}
+							<DropdownMenu.Separator />
+							<DropdownMenu.Item
+								onclick={() => (controls.hidden = { ...controls.hidden, [groupBy]: [] })}
+								>Show all</DropdownMenu.Item
+							>
+						{/if}
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 				{#if controls.presentation === 'chart'}<IconChartBar size={16} />Chart{:else}<IconWallet
 						size={16}
 					/>Overview{/if}
@@ -245,239 +417,91 @@
 				/></Select.Content
 			>
 		</Select.Root>
-		<Select.Root
-			type="single"
-			value={controls.includeClosed ? 'all' : 'open'}
-			onValueChange={(v) => (controls.includeClosed = v === 'all')}
-		>
-			<Select.Trigger class="min-h-9" aria-label="Account status"
-				><IconBuildingBank size={16} />{controls.includeClosed
-					? 'Open & closed'
-					: 'Open accounts'}</Select.Trigger
-			>
-			<Select.Content
-				><Select.Item value="all" label="Open & closed" /><Select.Item
-					value="open"
-					label="Open accounts"
-				/></Select.Content
-			>
-		</Select.Root>
-		<Select.Root
-			type="single"
-			value={controls.activePreset}
-			onValueChange={(v) => (controls.activePreset = v as PresetLabel)}
-		>
-			<Select.Trigger class="min-h-9">
-				<IconCalendarWeek size={16} class="text-muted-foreground" />
-				{controls.activePreset === '' ? 'Custom' : controls.activePreset}
-			</Select.Trigger>
-			<Select.Content>
-				{#each PRESET_LABELS as label (label)}
-					<Select.Item value={label} {label} />
-				{/each}
-			</Select.Content>
-		</Select.Root>
-
-		<Select.Root
-			type="single"
-			disabled={controls.presentation === 'overview'}
-			value={controls.bucket}
-			onValueChange={(v) => (controls.bucket = v as Bucket)}
-		>
-			<Select.Trigger class="min-h-9">
-				<IconCalendarStats size={16} class="text-muted-foreground" />
-				{controls.bucket === 'day' ? 'Daily' : controls.bucket === 'week' ? 'Weekly' : 'Monthly'}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="day" label="Daily" />
-				<Select.Item value="week" label="Weekly" />
-				<Select.Item value="month" label="Monthly" />
-			</Select.Content>
-		</Select.Root>
-
-		<Select.Root
-			type="single"
-			value={groupBy}
-			onValueChange={(v) => {
-				controls.groupBy = v as GroupBy;
-			}}
-		>
-			<Select.Trigger class="min-h-9">
-				<IconStack2 size={16} class="text-muted-foreground" />
-				{groupBy === 'account'
-					? 'By account'
-					: groupBy === 'bank'
-						? 'By bank'
-						: groupBy === 'type'
-							? 'By type'
-							: 'By category'}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="account" label="By account" />
-				<Select.Item value="bank" label="By bank" />
-				<Select.Item value="type" label="By type" />
-				<Select.Item value="category" label="By category" />
-			</Select.Content>
-		</Select.Root>
-
-		<Select.Root
-			type="single"
-			disabled={controls.presentation === 'overview'}
-			value={controls.kind}
-			onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
-		>
-			<Select.Trigger class="min-h-9">
-				{#if controls.kind === 'area'}
-					<IconChartAreaFilled size={16} class="text-muted-foreground" />
-					Area
-				{:else if controls.kind === 'line'}
-					<IconChartLine size={16} class="text-muted-foreground" /> Line
-				{:else}
-					<IconChartBar size={16} class="text-muted-foreground" />
-					Bars
-				{/if}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="area" label="Area" />
-				<Select.Item value="bar" label="Bars" />
-				<Select.Item value="line" label="Line" />
-			</Select.Content>
-		</Select.Root>
-
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
 					<Button
 						{...props}
-						variant={flowMode === 'both' ? 'outline' : 'default'}
+						variant="outline"
 						size="sm"
 						class="min-h-9 font-normal"
+						aria-label="Account status"
 					>
-						<IconArrowsDownUp
-							size={16}
-							class={flowMode === 'both' ? 'text-muted-foreground' : ''}
-						/>
-						{flowMode === 'both'
-							? 'Spending & Income'
-							: flowMode === 'spending'
-								? 'Spending'
-								: 'Income'}
-						<IconChevronDown size={16} class={flowMode === 'both' ? 'text-muted-foreground' : ''} />
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="w-44">
-				{#each ['spending', 'income'] as const as dir (dir)}
-					<DropdownMenu.CheckboxItem
-						checked={controls.flows.includes(dir)}
-						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							const next = checked
-								? [...controls.flows, dir]
-								: controls.flows.filter((f) => f !== dir);
-							// empty selection means nothing to plot - snap back to both
-							controls.flows = next.length === 0 ? ['spending', 'income'] : next;
-						}}
-					>
-						{dir === 'spending' ? 'Spending' : 'Income'}
-					</DropdownMenu.CheckboxItem>
-				{/each}
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
-
-		<Select.Root
-			type="single"
-			disabled={controls.presentation === 'overview'}
-			value={view.cumulative ? 'cumulative' : 'bucket'}
-			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
-		>
-			<Select.Trigger class="min-h-9">
-				<IconSum size={16} class="text-muted-foreground" />
-				{view.cumulative ? 'Cumulative' : 'Per bucket'}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="bucket" label="Per bucket" />
-				<Select.Item value="cumulative" label="Cumulative" />
-			</Select.Content>
-		</Select.Root>
-
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant={excluded.length ? 'default' : 'outline'}
-						size="sm"
-						class="min-h-9 font-normal"
-					>
-						<IconFilter size={16} class="text-muted-foreground" />
-						{excluded.length === 0 ? 'All series' : `Hiding ${excluded.length}`}
+						<IconBuildingBank size={16} />
+						{controls.accountStatuses.length === 2
+							? 'Open & closed'
+							: controls.accountStatuses[0] === 'open'
+								? 'Open accounts'
+								: 'Closed accounts'}
 						<IconChevronDown size={16} class="text-muted-foreground" />
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="max-h-96 w-64 overflow-y-auto">
-				<div class="sticky top-0 z-10 bg-popover pb-2">
-					<Input bind:value={search} aria-label="Search series" placeholder="Search series" />
-				</div>
-				{#each filterKeys as key (key)}
+			<DropdownMenu.Content>
+				{#each ['open', 'closed'] as const as status (status)}
 					<DropdownMenu.CheckboxItem
-						checked={!excluded.includes(key)}
-						disabled={!view.applicable.includes(key)}
+						checked={controls.accountStatuses.includes(status)}
 						closeOnSelect={false}
-						onCheckedChange={() => toggleSeries(key)}
+						onCheckedChange={(checked) => {
+							const next = checked
+								? [...controls.accountStatuses, status]
+								: controls.accountStatuses.filter((s) => s !== status);
+							controls.accountStatuses = next.length ? next : ['open', 'closed'];
+						}}>{status === 'open' ? 'Open' : 'Closed'}</DropdownMenu.CheckboxItem
 					>
-						{#if iconFor(key)}<span
-								class="series-icon mr-1.5"
-								style:mask-image={`url("${iconFor(key)}")`}
-								aria-hidden="true"
-							></span>{:else}{@const Icon = iconComponent(key)}<Icon
-								size={16}
-								class="mr-1.5"
-							/>{/if}
-						{labelFor(key)}
-					</DropdownMenu.CheckboxItem>
 				{/each}
-				{#if excluded.length > 0}
-					<DropdownMenu.Separator />
-					<DropdownMenu.Item
-						onclick={() => (controls.hidden = { ...controls.hidden, [groupBy]: [] })}
-						>Show all</DropdownMenu.Item
-					>
-				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
+		{#if controls.presentation === 'chart'}
+			<Select.Root
+				type="single"
+				value={controls.activePreset}
+				onValueChange={(v) => (controls.activePreset = v as PresetLabel)}
+			>
+				<Select.Trigger class="min-h-9" aria-label="Date preset">
+					<IconCalendarWeek size={16} class="text-muted-foreground" />
+					{controls.activePreset === '' ? 'Custom' : controls.activePreset}
+				</Select.Trigger>
+				<Select.Content>
+					{#each PRESET_LABELS as label (label)}
+						<Select.Item value={label} {label} />
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		{/if}
 	</div>
 
-	<div class="flex flex-wrap items-center gap-2 text-xs">
-		<label class="flex items-center gap-2"
-			>From <input
-				class="min-h-9 rounded-md border bg-background px-2"
-				type="date"
-				min={minDate}
-				max={viewState.dateEnd}
-				value={viewState.dateStart}
-				onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
-			/></label
-		>
-		<label class="flex items-center gap-2"
-			>To <input
-				class="min-h-9 rounded-md border bg-background px-2"
-				type="date"
-				min={viewState.dateStart}
-				max={maxDate}
-				value={viewState.dateEnd}
-				onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
-			/></label
-		>
-	</div>
-	<RangeSlider
-		min={minDate}
-		max={maxDate}
-		start={viewState.dateStart}
-		end={viewState.dateEnd}
-		onchange={setDates}
-	/>
+	{#if controls.presentation === 'chart'}
+		<div class="flex flex-wrap items-center gap-2 text-xs">
+			<label class="flex items-center gap-2"
+				>From <input
+					class="min-h-9 rounded-md border bg-background px-2"
+					type="date"
+					min={minDate}
+					max={viewState.dateEnd}
+					value={viewState.dateStart}
+					onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
+				/></label
+			>
+			<label class="flex items-center gap-2"
+				>To <input
+					class="min-h-9 rounded-md border bg-background px-2"
+					type="date"
+					min={viewState.dateStart}
+					max={maxDate}
+					value={viewState.dateEnd}
+					onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
+				/></label
+			>
+		</div>
+		<RangeSlider
+			min={minDate}
+			max={maxDate}
+			start={viewState.dateStart}
+			end={viewState.dateEnd}
+			onchange={setDates}
+		/>
+	{/if}
 	{#if controls.presentation === 'overview'}
 		<section
 			aria-label={view.title}
