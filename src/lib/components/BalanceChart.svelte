@@ -46,7 +46,7 @@
 		applicable: string[];
 		onToggle: (key: string) => void;
 		heightClass?: string;
-		labelFor?: (key: string) => string;
+		labelFor?: (key: string, start?: string, end?: string) => string;
 		/** Stable palette slot per series key - keeps an entity's color fixed
 		 * when filtering or reordering changes the series array. */
 		slotFor?: (key: string) => number;
@@ -270,6 +270,7 @@
 						}
 					},
 					tooltip: {
+						filter: (item) => Math.round(Math.abs(item.parsed.y ?? 0) * 100) !== 0,
 						usePointStyle: true,
 						backgroundColor: chartTheme.surface,
 						titleColor: chartTheme.ink,
@@ -282,7 +283,17 @@
 						itemSort: (a, b) => (b.parsed.y ?? 0) - (a.parsed.y ?? 0),
 						callbacks: {
 							title: tooltipTitle,
-							label: (item) => `${item.dataset.label}: ${money(item.parsed.y ?? 0)}`,
+							label: (item) => {
+								const key = data.series[item.datasetIndex]?.key;
+								const start = data.dates[item.dataIndex];
+								const end =
+									bucket === 'month'
+										? dayjs(start).endOf('month').format('YYYY-MM-DD')
+										: bucket === 'week'
+											? dayjs(start).add(6, 'day').format('YYYY-MM-DD')
+											: start;
+								return `${key ? labelFor(key, start, end) : item.dataset.label}: ${money(item.parsed.y ?? 0)}`;
+							},
 							footer: (items) => {
 								// the Net row already IS the total - don't double-count it
 								const total = items

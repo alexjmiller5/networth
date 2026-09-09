@@ -20,7 +20,19 @@ const TXN_COLUMNS = [
 	'deleted_at'
 ];
 const TABLES: Record<string, string[]> = {
-	accounts: ['id', 'bank', 'name', 'type', 'source', 'currency', 'deleted_at'],
+	accounts: [
+		'id',
+		'bank',
+		'name',
+		'type',
+		'source',
+		'currency',
+		'closed',
+		'is_closed',
+		'name_history',
+		'logo',
+		'deleted_at'
+	],
 	overlay: ['source', 'source_id', 'category', 'internal', 'excluded', 'deleted_at'],
 	shares: ['id', 'source', 'source_id', 'date', 'amount', 'category', 'deleted_at'],
 	points: ['program', 'points', 'est_value', 'scraped_at', 'deleted_at'],

@@ -16,6 +16,10 @@ export interface Account {
 	type: AccountType;
 	source?: string;
 	currency?: string;
+	closed?: boolean;
+	/** Prior names in chronological order; until is exclusive. */
+	nameHistory?: { name: string; until: string }[];
+	logo?: string;
 }
 
 export type CategoryKind = 'spending' | 'income' | 'transfer' | 'unknown';

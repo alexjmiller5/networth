@@ -16,6 +16,8 @@ export const STORAGE_KEY = 'networth-ui';
 export const GROUPS = ['account', 'bank', 'type', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export interface Controls {
+	presentation: 'chart' | 'overview';
+	includeClosed: boolean;
 	activePreset: PresetLabel | '';
 	dateStart: string;
 	dateEnd: string;
@@ -87,6 +89,8 @@ export function readControls(
 	) as Controls['hidden'];
 	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
 	return {
+		presentation: choice(saved.presentation, ['chart', 'overview'], 'chart'),
+		includeClosed: typeof saved.includeClosed === 'boolean' ? saved.includeClosed : true,
 		activePreset: custom ? '' : activePreset,
 		dateStart: range.start,
 		dateEnd: range.end,
@@ -134,10 +138,15 @@ export function buildView(
 	state: Controls,
 	coverage?: AccountCoverage[]
 ) {
+	if (!state.includeClosed) {
+		accounts = accounts.filter((a) => !a.closed);
+		const ids = new Set(accounts.map((a) => a.id));
+		txns = txns.filter((t) => t.standalone || ids.has(t.account_id ?? ''));
+	}
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
 	const mode = state.flows.length === 1 ? state.flows[0] : 'signed';
 	const isFlow = groupBy === 'category' || mode !== 'signed';
-	const cumulative = state.cumulativeChoice ?? !isFlow;
+	const cumulative = state.presentation === 'overview' || (state.cumulativeChoice ?? !isFlow);
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
 	const keyOf = (t: Txn) =>
 		groupBy === 'category'
@@ -205,6 +214,15 @@ export function buildView(
 	const total = cumulative
 		? (totals.at(-1) ?? 0)
 		: Math.round(totals.reduce((sum, v) => sum + v, 0) * 100) / 100;
+	const values = new Map(
+		data.series.map((s) => [
+			s.key,
+			cumulative ? (s.data.at(-1) ?? 0) : Math.round(s.data.reduce((n, v) => n + v, 0) * 100) / 100
+		])
+	);
+	const summary = keys
+		.filter((key) => !hidden.includes(key) && (isFlow || key !== FRIEND_PAID))
+		.map((key) => ({ key, value: values.get(key) ?? null }));
 	const title = !isFlow
 		? cumulative
 			? 'Verified balance subtotal'
@@ -227,7 +245,30 @@ export function buildView(
 		const key = keyOf(t);
 		return !!key && !hidden.includes(key);
 	}).length;
-	return { data, keys, applicable, hidden, isFlow, cumulative, total, title, uncategorized };
+	return {
+		data,
+		keys,
+		applicable,
+		hidden,
+		isFlow,
+		cumulative,
+		total,
+		title,
+		uncategorized,
+		summary
+	};
+}
+
+/** Names follow the account's real effective dates, not when metadata was edited. */
+export function accountLabel(account: Account, start: string, end = start): string {
+	let since = '';
+	const names: string[] = [];
+	for (const previous of account.nameHistory ?? []) {
+		if (start < previous.until && end >= since) names.push(previous.name);
+		since = previous.until;
+	}
+	if (end >= since) names.push(account.name);
+	return [...new Set(names)].join(' / ');
 }
 
 export function pointsAt<T extends { program: string; scrapedAt?: string }>(

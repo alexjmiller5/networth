@@ -21,6 +21,7 @@
 	import IconHelp from '@tabler/icons-svelte/icons/help';
 	import IconBuildingBank from '@tabler/icons-svelte/icons/building-bank';
 	import IconWallet from '@tabler/icons-svelte/icons/wallet';
+	import IconCash from '@tabler/icons-svelte/icons/cash';
 	import {
 		PRESET_LABELS,
 		clampRange,
@@ -29,6 +30,7 @@
 		type PresetLabel
 	} from '$lib/finance/presets';
 	import {
+		accountLabel,
 		buildView,
 		clearControlParams,
 		FRIEND_PAID,
@@ -70,6 +72,20 @@
 	const viewState = $derived({ ...controls, dateStart: range.start, dateEnd: range.end });
 	const view = $derived(buildView(data.txns, accounts, categories, viewState, data.coverage));
 	const groupBy = $derived(controls.groupBy);
+	const paletteKeys = $derived(
+		groupBy === 'category'
+			? [...categories]
+					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
+					.map((c) => c.name)
+			: [
+					...new Set(
+						[...accounts]
+							.sort((a, b) => a.id.localeCompare(b.id))
+							.map((a) => (groupBy === 'account' ? a.id : a[groupBy === 'bank' ? 'bank' : 'type']))
+					),
+					FRIEND_PAID
+				]
+	);
 	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
 	let search = $state('');
@@ -91,21 +107,33 @@
 		cash: 'Cash',
 		stored_value: 'Stored value'
 	};
-	function labelFor(key: string): string {
+	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
+		start = start < viewState.dateStart ? viewState.dateStart : start;
+		end = end > viewState.dateEnd ? viewState.dateEnd : end;
+		const account = accounts.find((a) => a.id === key);
 		return groupBy === 'account'
-			? (accounts.find((a) => a.id === key)?.name ?? key)
+			? account
+				? accountLabel(account, start, end)
+				: key
 			: groupBy === 'type'
 				? (typeLabels[key] ?? key)
 				: key;
 	}
 	function iconFor(key: string): string | undefined {
+		if (groupBy === 'account') return accounts.find((a) => a.id === key)?.logo;
+		if (groupBy === 'bank') return accounts.find((a) => a.bank === key && a.logo)?.logo;
 		const category = groupBy === 'category' ? categories.find((c) => c.name === key) : undefined;
 		return category && 'iconUrl' in category && typeof category.iconUrl === 'string'
 			? category.iconUrl
 			: undefined;
 	}
 	function iconComponent(key: string) {
+		if (
+			(groupBy === 'account' && accounts.find((a) => a.id === key)?.type === 'cash') ||
+			(groupBy === 'type' && key === 'cash')
+		)
+			return IconCash;
 		return groupBy === 'category'
 			? IconHelp
 			: key === FRIEND_PAID
@@ -174,7 +202,14 @@
 			<p class="text-sm text-muted-foreground">Money over time, across every account</p>
 		</div>
 		<div class="text-right">
-			<div class="text-2xl font-semibold tabular-nums">{money(view.total)}</div>
+			<div
+				class="text-2xl font-semibold tabular-nums"
+				title={view.isFlow
+					? 'Sum of the visible categorized amounts in this date range, using your shares and excluding internal transfers.'
+					: 'Sum of the visible verified transaction ledgers. Credit-card debt subtracts from the subtotal.'}
+			>
+				{money(view.total)}
+			</div>
 			<div class="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
 				{view.title}
 				{view.cumulative && !view.isFlow
@@ -185,6 +220,40 @@
 	</header>
 
 	<div class="flex flex-wrap items-center gap-2">
+		<Select.Root
+			type="single"
+			value={controls.presentation}
+			onValueChange={(v) => (controls.presentation = v as 'chart' | 'overview')}
+		>
+			<Select.Trigger class="min-h-9" aria-label="View">
+				{#if controls.presentation === 'chart'}<IconChartBar size={16} />Chart{:else}<IconWallet
+						size={16}
+					/>Overview{/if}
+			</Select.Trigger>
+			<Select.Content
+				><Select.Item value="chart" label="Chart" /><Select.Item
+					value="overview"
+					label="Overview"
+				/></Select.Content
+			>
+		</Select.Root>
+		<Select.Root
+			type="single"
+			value={controls.includeClosed ? 'all' : 'open'}
+			onValueChange={(v) => (controls.includeClosed = v === 'all')}
+		>
+			<Select.Trigger class="min-h-9" aria-label="Account status"
+				><IconBuildingBank size={16} />{controls.includeClosed
+					? 'Open & closed'
+					: 'Open accounts'}</Select.Trigger
+			>
+			<Select.Content
+				><Select.Item value="all" label="Open & closed" /><Select.Item
+					value="open"
+					label="Open accounts"
+				/></Select.Content
+			>
+		</Select.Root>
 		<Select.Root
 			type="single"
 			value={controls.activePreset}
@@ -203,6 +272,7 @@
 
 		<Select.Root
 			type="single"
+			disabled={controls.presentation === 'overview'}
 			value={controls.bucket}
 			onValueChange={(v) => (controls.bucket = v as Bucket)}
 		>
@@ -244,6 +314,7 @@
 
 		<Select.Root
 			type="single"
+			disabled={controls.presentation === 'overview'}
 			value={controls.kind}
 			onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
 		>
@@ -308,6 +379,7 @@
 
 		<Select.Root
 			type="single"
+			disabled={controls.presentation === 'overview'}
 			value={view.cumulative ? 'cumulative' : 'bucket'}
 			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
 		>
@@ -398,19 +470,67 @@
 		end={viewState.dateEnd}
 		onchange={setDates}
 	/>
-	<BalanceChart
-		data={view.data}
-		bucket={controls.bucket}
-		kind={controls.kind}
-		net={groupBy === 'category' && flowMode === 'both'}
-		{labelFor}
-		{iconFor}
-		{iconComponent}
-		legendKeys={view.keys}
-		hidden={view.hidden}
-		applicable={view.applicable}
-		onToggle={toggleSeries}
-	/>
+	{#if controls.presentation === 'overview'}
+		<section aria-label={view.title} class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+			{#each view.summary as row (row.key)}
+				{@const account =
+					groupBy === 'account' ? accounts.find((a) => a.id === row.key) : undefined}
+				{@const coverage = account
+					? data.coverage.find((c) => c.account_id === account.id)
+					: undefined}
+				<article
+					class="flex min-w-0 flex-col gap-1 rounded-md border p-3"
+					title={row.value === null && !view.isFlow ? coverage?.reasons.join(' · ') : undefined}
+				>
+					<div class="flex items-start gap-2 text-xs">
+						{#if iconFor(row.key)}<span
+								class="series-icon mt-0.5 shrink-0"
+								style:mask-image={`url("${iconFor(row.key)}")`}
+								aria-hidden="true"
+							></span>{:else}{@const Icon = iconComponent(row.key)}<Icon
+								size={16}
+								class="shrink-0"
+							/>{/if}
+						<span class="break-words font-medium"
+							>{labelFor(
+								row.key,
+								view.isFlow ? viewState.dateStart : viewState.dateEnd,
+								viewState.dateEnd
+							)}</span
+						>
+					</div>
+					<div class="text-lg font-semibold tabular-nums">
+						{row.value === null ? 'Unavailable' : money(row.value)}
+					</div>
+					<p class="text-xs text-muted-foreground">
+						{#if account?.closed}Closed ·
+						{/if}
+						{#if view.isFlow}{row.value === null ? 'No categorized activity' : view.title}
+						{:else if row.value === null}{coverage
+								? coverageLabels[coverage.status]
+								: 'Not verified'}
+						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
+						{:else}Verified subtotal{/if}
+					</p>
+				</article>
+			{/each}
+		</section>
+	{:else}
+		<BalanceChart
+			data={view.data}
+			bucket={controls.bucket}
+			kind={controls.kind}
+			net={groupBy === 'category' && flowMode === 'both'}
+			{labelFor}
+			{iconFor}
+			{iconComponent}
+			legendKeys={view.keys}
+			slotFor={(key) => paletteKeys.indexOf(key)}
+			hidden={view.hidden}
+			applicable={view.applicable}
+			onToggle={toggleSeries}
+		/>
+	{/if}
 	{#if !view.applicable.length}<p class="text-sm text-muted-foreground" role="status">
 			No matching data in this date range.
 		</p>{/if}
