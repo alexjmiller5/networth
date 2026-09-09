@@ -2,72 +2,72 @@
 # requires-python = ">=3.12"
 # dependencies = ["httpx"]
 # ///
-"""Mint this project's machine-creatable credentials (op-project-bootstrap
-provision contract: --list prints mintable field names; --field NAME prints
-ONLY the secret to stdout, progress on stderr).
+"""Bootstrap minting: --list or --field NAME. Secret output is for the caller.
 
-Runs under whatever `op` auth the caller has; needs read access to the
-AI Agent vault (admin CF key with User API Tokens: Edit). Idempotent per field.
+The provisioning credential only mints replacements. Save the new value,
+deploy and verify before retiring the previous token by its provider ID.
 """
-
 import json
+import os
 import subprocess
 import sys
+from uuid import uuid4
 
 import httpx
 
-CF_ACCOUNT = "1e69de15e5dc3dddea6db7b3ae8087bc"
 NAME = "networth"
-# AI Agent vault Cloudflare API key, by ID (names are mutable, IDs aren't)
 OP_CF_TOKEN = "op://4eeyrkqibibn7k4j6rz2fbzvxm/mxxpo6neiz3grdyrjj7rv7nume/credential"
+FIELDS = ["api-token", "account-id"]
 
-FIELDS = ["api-token", "account-id", "LIFE_HUB_TOKEN"]
 
-
-def log(msg: str) -> None:
-    print(msg, file=sys.stderr)
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def op_read(ref: str) -> str:
-    return subprocess.run(
-        ["op", "read", ref], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    return subprocess.run(["op", "read", ref], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def client() -> httpx.Client:
+    return httpx.Client(
+        base_url="https://api.cloudflare.com/client/v4",
+        headers={"Authorization": "Bearer " + (os.environ.get("CF_PROVISION_TOKEN") or op_read(OP_CF_TOKEN))},
+        timeout=30,
+    )
+
+
+def account_id(c: httpx.Client) -> str:
+    if value := os.environ.get("CLOUDFLARE_ACCOUNT_ID"):
+        return value
+    accounts = c.get("/accounts").raise_for_status().json()["result"]
+    if len(accounts) != 1:
+        raise RuntimeError("Set CLOUDFLARE_ACCOUNT_ID to select the deployment account")
+    return accounts[0]["id"]
 
 
 def mint_deploy_token() -> str:
-    """Project-scoped CF token for CI. Adjust `want` to what THIS site deploys
-    (D1 Write, Workers KV Storage Write, ...). Token values are shown once,
-    so delete any same-named token and recreate. More minter shapes (Resend
-    send keys, Turnstile secrets, random tokens): see acl-price-watch."""
-    c = httpx.Client(
-        base_url="https://api.cloudflare.com/client/v4",
-        headers={"Authorization": f"Bearer {op_read(OP_CF_TOKEN)}"},
-    )
-    token_name = f"{NAME}-deploy"
-    tokens = c.get("/user/tokens", params={"per_page": 100}).raise_for_status().json()["result"]
-    for t in tokens or []:
-        if t["name"] == token_name:
-            log(f"deleting existing token {token_name} (value not re-readable)")
-            c.delete(f"/user/tokens/{t['id']}").raise_for_status()
-    groups = c.get("/user/tokens/permission_groups").raise_for_status().json()["result"]
-    want = {"Workers Scripts Write", "Workers R2 Storage Write"}
-    ids = [{"id": g["id"]} for g in groups if g["name"] in want]
-    assert len(ids) == len(want), f"permission groups not found: {want}"
-    r = c.post(
-        "/user/tokens",
-        json={
-            "name": token_name,
-            "policies": [
-                {
-                    "effect": "allow",
-                    "resources": {f"com.cloudflare.api.account.{CF_ACCOUNT}": "*"},
-                    "permission_groups": ids,
-                }
-            ],
-        },
-    ).raise_for_status()
-    log(f"✓ scoped deploy token '{token_name}' minted (Workers Scripts + R2)")
-    return r.json()["result"]["value"]
+    """Dedicated credential; Workers Scripts Write is account-wide in Cloudflare."""
+    with client() as c:
+        groups = c.get("/user/tokens/permission_groups").raise_for_status().json()["result"]
+        ids = {g["name"]: g["id"] for g in groups}
+        policies = [{
+            "effect": "allow",
+            "resources": {f"com.cloudflare.api.account.{account_id(c)}": "*"},
+            "permission_groups": [{"id": ids["Workers Scripts Write"]}],
+        }]
+        result = c.post("/user/tokens", json={
+            "name": f"{NAME}-deploy-{uuid4().hex[:8]}",
+            "policies": policies,
+        }).raise_for_status().json()
+        if not result.get("success"):
+            raise RuntimeError("Cloudflare refused the deployment credential")
+        log(f"Minted deployment token {result['result']['id']}; previous tokens remain active until verification")
+        return result["result"]["value"]
+
+
+def deployment_account() -> str:
+    with client() as c:
+        return account_id(c)
 
 
 def mint_hub_token() -> str:
@@ -87,11 +87,8 @@ def mint_hub_token() -> str:
     return result["token"]
 
 
-MINTERS = {
-    "api-token": mint_deploy_token,
-    "account-id": lambda: CF_ACCOUNT,
-    "LIFE_HUB_TOKEN": mint_hub_token,
-}
+FIELDS.append("LIFE_HUB_TOKEN")
+MINTERS = {"api-token": mint_deploy_token, "account-id": deployment_account, "LIFE_HUB_TOKEN": mint_hub_token}
 
 
 def main() -> None:
