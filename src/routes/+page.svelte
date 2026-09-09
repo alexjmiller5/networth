@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Seo from '$lib/components/seo.svelte';
 	import BalanceChart from '$lib/components/BalanceChart.svelte';
 	import RangeSlider from '$lib/components/RangeSlider.svelte';
@@ -30,9 +30,8 @@
 	} from '$lib/finance/presets';
 	import {
 		buildView,
-		controlParams,
+		clearControlParams,
 		FRIEND_PAID,
-		hasControlParams,
 		pointsAt,
 		readControls,
 		toggleHidden,
@@ -56,17 +55,13 @@
 	);
 	const minDate = $derived(dates[0] ?? new Date().toISOString().slice(0, 10));
 	const maxDate = $derived(dates.at(-1) ?? minDate);
-	const params = new URLSearchParams(window.location.search);
-	const deepLink = hasControlParams(params);
 	let storage: Storage | undefined;
 	try {
 		storage = window.localStorage;
 	} catch {
 		/* Browsing still works with storage disabled. */
 	}
-	let controls = $state(untrack(() => readControls(storage, params, minDate, maxDate)));
-	const initialControls = JSON.stringify(untrack(() => controls));
-	let edited = false;
+	let controls = $state(untrack(() => readControls(storage, minDate, maxDate)));
 	const range = $derived(
 		controls.activePreset
 			? getPresetRange(controls.activePreset, minDate, maxDate)
@@ -160,11 +155,13 @@
 		}
 	}
 	$effect(() => {
-		if (JSON.stringify(controls) !== initialControls) edited = true;
-		writeControls(storage, viewState, deepLink, edited);
+		writeControls(storage, viewState);
+	});
+	onMount(() => {
 		const url = new URL(window.location.href);
-		url.search = controlParams(viewState, url.searchParams).toString();
-		window.history.replaceState(window.history.state, '', url);
+		url.search = clearControlParams(url.searchParams).toString();
+		if (url.href !== window.location.href)
+			window.history.replaceState(window.history.state, '', url);
 	});
 </script>
 

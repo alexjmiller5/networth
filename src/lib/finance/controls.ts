@@ -1,12 +1,5 @@
 import type { Account, AccountCoverage, Category, GroupBy, Txn } from './types';
-import {
-	addDays,
-	clampRange,
-	getPresetRange,
-	isDate,
-	PRESET_LABELS,
-	type PresetLabel
-} from './presets';
+import { addDays, clampRange, getPresetRange, PRESET_LABELS, type PresetLabel } from './presets';
 import {
 	accumulate,
 	bucketize,
@@ -44,13 +37,8 @@ const parse = (raw: string | null): unknown => {
 		return null;
 	}
 };
-const choice = <T extends string>(
-	url: unknown,
-	saved: unknown,
-	choices: readonly T[],
-	fallback: T
-): T =>
-	choices.includes(url as T) ? (url as T) : choices.includes(saved as T) ? (saved as T) : fallback;
+const choice = <T extends string>(saved: unknown, choices: readonly T[], fallback: T): T =>
+	choices.includes(saved as T) ? (saved as T) : fallback;
 const PARAMS = [
 	'preset',
 	'start',
@@ -63,11 +51,16 @@ const PARAMS = [
 	'hide',
 	...GROUPS.map((g) => `hide.${g}`)
 ];
-export const hasControlParams = (params: URLSearchParams) => PARAMS.some((p) => params.has(p));
+
+/** Remove dashboard state from existing links without disturbing other URL parameters. */
+export function clearControlParams(params: URLSearchParams): URLSearchParams {
+	const clean = new URLSearchParams(params);
+	for (const key of PARAMS) clean.delete(key);
+	return clean;
+}
 
 export function readControls(
 	storage: Pick<Storage, 'getItem'> | undefined,
-	params: URLSearchParams,
 	min: string,
 	max: string
 ): Controls {
@@ -77,87 +70,40 @@ export function readControls(
 	} catch {
 		/* Storage may be disabled. */
 	}
-	const groupBy = choice(params.get('group'), saved.groupBy, GROUPS, 'account');
-	const presetParam = params.get('preset') === 'custom' ? '' : params.get('preset');
-	const activePreset = choice(presetParam, saved.activePreset, [...PRESET_LABELS, ''], '1Y');
-	const custom =
-		(!params.has('preset') && (params.has('start') || params.has('end'))) || activePreset === '';
+	const groupBy = choice(saved.groupBy, GROUPS, 'account');
+	const activePreset = choice(saved.activePreset, [...PRESET_LABELS, ''], '1Y');
+	const custom = activePreset === '';
 	const range = custom
-		? clampRange(
-				isDate(params.get('start')) ? params.get('start') : saved.dateStart,
-				isDate(params.get('end')) ? params.get('end') : saved.dateEnd,
-				min,
-				max
-			)
+		? clampRange(saved.dateStart, saved.dateEnd, min, max)
 		: getPresetRange(activePreset as PresetLabel, min, max);
 	const validFlows = (v: unknown): v is Controls['flows'] =>
 		Array.isArray(v) && v.length > 0 && v.every((f) => f === 'spending' || f === 'income');
-	const urlFlows = params.get('flows')?.split(',');
-	const flows = validFlows(urlFlows)
-		? [...new Set(urlFlows)]
-		: validFlows(saved.flows)
-			? [...new Set(saved.flows)]
-			: (['spending', 'income'] as Controls['flows']);
-	const cum = params.get('cum');
+	const flows = validFlows(saved.flows)
+		? [...new Set(saved.flows)]
+		: (['spending', 'income'] as Controls['flows']);
 	const savedHidden = record(saved.hidden);
 	const hidden = Object.fromEntries(
-		GROUPS.map((g) => [
-			g,
-			params.has(`hide.${g}`) ? strings(parse(params.get(`hide.${g}`))) : strings(savedHidden[g])
-		])
+		GROUPS.map((g) => [g, strings(savedHidden[g])])
 	) as Controls['hidden'];
-	if (!params.has(`hide.${groupBy}`)) {
-		if (params.has('hide'))
-			hidden[groupBy] = strings(params.get('hide')?.split(',').filter(Boolean));
-		else if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
-	}
+	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
 	return {
 		activePreset: custom ? '' : activePreset,
 		dateStart: range.start,
 		dateEnd: range.end,
-		bucket: choice(params.get('bucket'), saved.bucket, ['day', 'week', 'month'], 'day'),
+		bucket: choice(saved.bucket, ['day', 'week', 'month'], 'day'),
 		groupBy,
-		kind: choice(params.get('chart'), saved.kind, ['bar', 'area', 'line'], 'bar'),
+		kind: choice(saved.kind, ['bar', 'area', 'line'], 'bar'),
 		flows,
-		cumulativeChoice:
-			cum === '1'
-				? true
-				: cum === '0'
-					? false
-					: cum === 'auto'
-						? null
-						: typeof saved.cumulativeChoice === 'boolean'
-							? saved.cumulativeChoice
-							: null,
+		cumulativeChoice: typeof saved.cumulativeChoice === 'boolean' ? saved.cumulativeChoice : null,
 		hidden
 	};
 }
 
-export function controlParams(state: Controls, original = new URLSearchParams()): URLSearchParams {
-	const p = new URLSearchParams(original);
-	for (const key of PARAMS) p.delete(key);
-	for (const [key, value] of Object.entries({
-		preset: state.activePreset || 'custom',
-		start: state.dateStart,
-		end: state.dateEnd,
-		bucket: state.bucket,
-		group: state.groupBy,
-		chart: state.kind,
-		flows: state.flows.join(','),
-		cum: state.cumulativeChoice === null ? 'auto' : state.cumulativeChoice ? '1' : '0'
-	}))
-		p.set(key, value);
-	for (const g of GROUPS) p.set(`hide.${g}`, JSON.stringify(state.hidden[g]));
-	return p;
-}
-
 export function writeControls(
 	storage: Pick<Storage, 'setItem'> | undefined,
-	state: Controls,
-	deepLink: boolean,
-	edited = false
+	state: Controls
 ): boolean {
-	if ((deepLink && !edited) || !storage) return false;
+	if (!storage) return false;
 	try {
 		storage.setItem(STORAGE_KEY, JSON.stringify(state));
 		return true;
