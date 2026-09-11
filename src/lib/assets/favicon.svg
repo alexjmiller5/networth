@@ -1,29 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-	<!-- networth: stacked money bands + rising dashed net line + $ -->
-	<style>
-		.ink { fill: #18181b; }
-		.line { stroke: #18181b; }
-		@media (prefers-color-scheme: dark) {
-			.ink { fill: #fafafa; }
-			.line { stroke: #fafafa; }
-		}
-	</style>
-	<path fill="#eb6834" d="M8 120 L8 92 L40 96 L72 84 L104 88 L120 78 L120 120 Z" />
-	<path fill="#2a78d6" d="M8 92 L8 66 L40 72 L72 58 L104 62 L120 54 L120 78 L104 88 L72 84 L40 96 Z" />
-	<path
-		class="line"
-		fill="none"
-		stroke-width="8"
-		stroke-linecap="round"
-		stroke-dasharray="15 11"
-		d="M8 54 L40 58 L72 42 L104 46 L120 30"
-	/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+	<!-- networth: stacked account bands climbing under a dollar mark.
+	     Self-contained tile (no prefers-color-scheme): the same artwork is the
+	     browser tab icon and, rendered full-bleed by scripts/generate-icons.sh,
+	     the homescreen icon. Square by design - the bands bleed to the edge and
+	     iOS masks its own corners. -->
+	<rect width="64" height="64" fill="#18181b" />
+	<path fill="#eb6834" d="M0 64 L0 46 L16 47 L32 42 L48 43 L64 33 L64 64 Z" />
+	<path fill="#2a78d6" d="M0 46 L0 36 L16 37 L32 30 L48 31 L64 19 L64 33 L48 43 L32 42 L16 47 Z" />
 	<text
-		class="ink"
-		x="76"
+		x="7"
 		y="30"
-		font-family="system-ui, -apple-system, sans-serif"
-		font-size="42"
+		fill="#fafafa"
+		font-family="system-ui, -apple-system, Helvetica, sans-serif"
+		font-size="30"
 		font-weight="800">$</text
 	>
 </svg>

@@ -170,11 +170,18 @@ options live in `vite.config.ts` inside the `sveltekit()` plugin.
   the site for LLM crawlers - fill its CHANGEMEs alongside the titles.
 - **apple-touch-icon**: `static/apple-touch-icon.png` (180x180) - the same
   purpose-driven icon rendered to PNG; iOS homescreen/share-sheet uses it.
-  Shipping the placeholder to prod is a bug, same as the favicon.
+  Shipping the placeholder to prod is a bug, same as the favicon. This
+  site's favicon is a full-bleed square tile (dark ground, stacked account
+  bands, `$`), so the tab icon and homescreen icon are one piece of artwork:
+  regenerate the PNG set with `scripts/generate-icons.sh '#18181b' 1` (tile
+  color + full-bleed scale; the defaults inset a bare glyph on white). Keep
+  the favicon's colors unconditional - qlmanage rasterizes in dark
+  appearance, so a `prefers-color-scheme` flip renders invisible ink.
 - **theme-color** metas in `src/app.html` (light + dark) - match them to the
-  site's background tokens in `layout.css`. Dark-mode-aware favicon: embed a
-  `prefers-color-scheme` `<style>` inside the favicon SVG when its colors
-  need to flip.
+  site's background tokens in `layout.css`. A favicon that needs its colors to flip
+  can embed a `prefers-color-scheme` `<style>`, but the icon rasterizer
+  renders the dark branch - prefer one unconditional palette that works on
+  both, or pass `generate-icons.sh` a background that suits the dark one.
 - **Error page**: `src/routes/+error.svelte` renders 404/500 with the site's
   theme tokens - restyle it with the site, don't delete it.
 - **http → https** is a 301 in `src/hooks.server.ts` (skipped in dev) - works
