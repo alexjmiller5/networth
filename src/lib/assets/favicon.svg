@@ -1,18 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-	<!-- networth: stacked account bands climbing under a dollar mark.
-	     Self-contained tile (no prefers-color-scheme): the same artwork is the
-	     browser tab icon and, rendered full-bleed by scripts/generate-icons.sh,
-	     the homescreen icon. Square by design - the bands bleed to the edge and
-	     iOS masks its own corners. -->
-	<rect width="64" height="64" fill="#18181b" />
-	<path fill="#eb6834" d="M0 64 L0 46 L16 47 L32 42 L48 43 L64 33 L64 64 Z" />
-	<path fill="#2a78d6" d="M0 46 L0 36 L16 37 L32 30 L48 31 L64 19 L64 33 L48 43 L32 42 L16 47 Z" />
+	<!-- networth: a milled-edge gold coin on forest green, its dollar mark cut
+	     through to the ground. Self-contained tile (no prefers-color-scheme):
+	     the same artwork is the browser tab icon and, rendered full-bleed by
+	     scripts/generate-icons.sh, the homescreen icon. Square by design - iOS
+	     masks its own corners. -->
+	<rect width="64" height="64" fill="#07331f" />
+	<circle cx="32" cy="32" r="23" fill="#e3b23c" />
+	<circle cx="32" cy="32" r="21" fill="none" stroke="#a87d12" stroke-width="4" stroke-dasharray="2.2 2.6" />
+	<circle cx="32" cy="32" r="17" fill="none" stroke="#a87d12" stroke-opacity="0.55" stroke-width="1.6" />
 	<text
-		x="7"
-		y="30"
-		fill="#fafafa"
+		x="32"
+		y="43"
+		text-anchor="middle"
+		fill="#07331f"
 		font-family="system-ui, -apple-system, Helvetica, sans-serif"
-		font-size="30"
+		font-size="28"
 		font-weight="800">$</text
 	>
 </svg>

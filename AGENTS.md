@@ -171,10 +171,11 @@ options live in `vite.config.ts` inside the `sveltekit()` plugin.
 - **apple-touch-icon**: `static/apple-touch-icon.png` (180x180) - the same
   purpose-driven icon rendered to PNG; iOS homescreen/share-sheet uses it.
   Shipping the placeholder to prod is a bug, same as the favicon. This
-  site's favicon is a full-bleed square tile (dark ground, stacked account
-  bands, `$`), so the tab icon and homescreen icon are one piece of artwork:
-  regenerate the PNG set with `scripts/generate-icons.sh '#18181b' 1` (tile
-  color + full-bleed scale; the defaults inset a bare glyph on white). Keep
+  site's favicon is a full-bleed square tile (milled-edge gold coin on forest
+  green, `$` cut through to the ground), so the tab icon and homescreen icon
+  are one piece of artwork: regenerate the PNG set with
+  `scripts/generate-icons.sh '#07331f' 1` (tile color + full-bleed scale;
+  the defaults inset a bare glyph on white). Keep
   the favicon's colors unconditional - qlmanage rasterizes in dark
   appearance, so a `prefers-color-scheme` flip renders invisible ink.
 - **theme-color** metas in `src/app.html` (light + dark) - match them to the
