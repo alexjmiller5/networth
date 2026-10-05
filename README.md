@@ -32,7 +32,7 @@ categories, reconciliation records, Venmo statement evidence, and points
 history using a dedicated `tables:read` hub token. Only the fields needed
 by the dashboard reach the browser. The token, raw provider payloads, notes,
 and stated balance evidence remain server-side. Responses are private and
-not cached. Cloudflare Access protects the entire site and API.
+not cached server-side. Cloudflare Access protects the entire site and API.
 
 - **Balances** use signed raw ledger amounts, including genuine opening
   entries. Shares and spending categories never change a bank balance.
@@ -97,3 +97,12 @@ Provision Cloudflare Access with `scripts/cf-access.py` before exposing
 personal data. Version preview URLs are disabled. Protect every application hostname;
 verify unauthenticated `/api/finance` requests are challenged before the
 Worker runs. The repository is shareable; the financial dataset is not.
+
+## Offline use
+
+Open the dashboard online once and let it finish loading. Later launches can use
+its downloaded application and last successful data on that device. Saved data is
+labelled with its save time. Reconnect loads through Cloudflare Access when your
+connection returns or your sign-in needs renewing. Refresh waits for a fresh
+response and keeps the previous chart if the request fails. Clearing the site's
+browser data removes the offline copy; a first visit still needs internet access.

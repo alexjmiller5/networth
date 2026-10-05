@@ -21,8 +21,9 @@
 			: (page.error?.message ?? 'Please try again in a moment.')}
 	</p>
 	<a
-		href="/"
+		href={page.status === 404 ? '/' : '/?online=1'}
+		data-sveltekit-reload
 		class="text-primary text-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4"
-		>{page.status === 404 ? 'Back to dashboard' : 'Try again'}</a
+		>{page.status === 404 ? 'Back to dashboard' : 'Reconnect'}</a
 	>
 </main>

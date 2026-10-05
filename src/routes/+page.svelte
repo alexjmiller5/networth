@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { readDashboard } from '$lib/offline';
 	import Seo from '$lib/components/seo.svelte';
 	import BalanceChart from '$lib/components/BalanceChart.svelte';
 	import RangeSlider from '$lib/components/RangeSlider.svelte';
@@ -46,7 +47,7 @@
 	import type { GroupBy } from '$lib/finance/types';
 	import type { Estate } from '$lib/finance/assemble';
 
-	let { data }: { data: Estate } = $props();
+	let { data }: { data: Estate & { savedAt: string | null } } = $props();
 	const accounts = $derived(data.accounts);
 	const categories = $derived(data.categories);
 	const dates = $derived(
@@ -183,10 +184,8 @@
 		refreshing = true;
 		refreshError = '';
 		try {
-			const response = await fetch('/api/finance', { cache: 'no-store' });
-			if (!response.ok)
-				throw new Error(`Refresh failed (${response.status}). Showing the previous data.`);
-			data = await response.json();
+			const result = await readDashboard<Estate>('/api/finance', fetch, { refresh: true });
+			data = { ...result.data, savedAt: result.savedAt };
 		} catch (error) {
 			refreshError =
 				error instanceof Error ? error.message : 'Refresh failed. Showing the previous data.';
@@ -230,6 +229,10 @@
 			</div>
 		</div>
 	</header>
+	{#if data.savedAt}<p class="text-xs text-muted-foreground" role="status">
+			Showing saved data from {new Date(data.savedAt).toLocaleString()}.
+			<a href="/?online=1" data-sveltekit-reload class="underline">Reconnect</a>
+		</p>{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
 		<Select.Root
