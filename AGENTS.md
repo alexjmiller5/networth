@@ -73,6 +73,16 @@ protects the site and every API route.
   totals. Typed balances partition by basis, period and source time precision;
   legacy snapshots remain explicitly untyped. Dated posted activity uses exact sums,
   a 90-day chart window and device-local dates/concealment. See `docs/rewards.md`.
+- Noncash refundable assets (Life Data `assets` + `asset_events`, such as a
+  security deposit) are owned principal that counts in net worth but is not
+  spendable. `refundable-principal.ts` validates their complete dated events
+  against disjoint owned allocations (a linked share, or an unsplit raw row) and
+  yields as-of principal plus residual activity. The assembler returns each asset
+  as a balance-only series in the Deposits asset class with internal ledger rows,
+  so it joins the one chart, its groupings and Overview. It removes only the
+  linked principal from that share's or row's flows, never raw balances, overlays
+  or whole parents. Every event needs a live `evidence_of` edge; evidence keys stay
+  server-side. Assets have no coverage row: they are evidenced, not reconciled.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
