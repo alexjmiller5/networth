@@ -6,13 +6,20 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
+- `/api/finance` and `/api/benefits` are the data paths. `LIFE_HUB_URL` is
+  server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
   enabled for the public URL read path. Local runtime tests cannot prove
   Cloudflare's production routing; verify an authenticated API response
   after deploying.
+  Pull every `next_cursor` page before assembly, sending the opaque cursor as
+  `after` to the same configured destination with the same table/column list.
+  Missing/null cursors end a pull (including legacy complete responses).
+  Continuing pages must be nonempty with a strictly advancing string cursor;
+  malformed or failed pages reject the whole response. Each table's complete
+  pull shares a 20-second timeout.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
@@ -38,12 +45,29 @@ protects the site and every API route.
   estate, never in source code. Tooltip rows that display as zero are hidden.
   Refunds reduce their spending category. Missing or malformed money is
   rejected rather than replaced with zero.
+- Verification selects each account's latest explicit monetary or unit checkpoint,
+  never the latest run for its entire source. Each account retains its own date.
+  A closed investment with independently verified zero cash and flat positions
+  may show current zero in Overview at/after that checkpoint. Its historical
+  market values remain unavailable; never backfill the chart with zeroes.
+- `/benefits` reads provider-native plans and observations separately from cash
+  and net worth. Keep metrics independent and nullable; suppressed vested amounts
+  stay null. Group by plan/year, order source date before capture time, and never
+  publish raw evidence references. Reuse device-local amount concealment, including
+  eligibility prose, without resetting other controls. See `docs/benefits.md`.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
+- The amount-concealment toggle masks money, native units, chart scale labels
+  and tooltip values on this device. It preserves underlying data and chart
+  geometry; it is not a redacted sharing/export boundary. Restore it before
+  rendering amounts and keep its preference local to the device.
+- The date slider uses a bounded 90-day UTC viewport with edge panning and
+  keyboard navigation. Earlier/Later moves the viewport without changing the
+  selected dates. Default to 90D only when no valid preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
   and Screentime. Do not write filters into the URL or restore them from it.
 - Use the life-data catalog for category names, kinds, and icons. Do not
