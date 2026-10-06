@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: 1Password/install-cli-action@v4
       # op:// refs below are BY NAME on purpose: op-project-bootstrap parses this file
       # to provision/verify the vault + items, and names are its input (an ID can't name
