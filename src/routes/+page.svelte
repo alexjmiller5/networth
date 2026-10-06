@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { formatMoney, formatUnits, formatCoverage } from '$lib/finance/display';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
+	import IconHeartHandshake from '@tabler/icons-svelte/icons/heart-handshake';
 	import IconEyeOff from '@tabler/icons-svelte/icons/eye-off';
 	import { readDashboard } from '$lib/offline';
 	import Seo from '$lib/components/seo.svelte';
@@ -230,6 +231,9 @@
 		</p>{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
+		<Button href="/benefits" variant="outline" class="min-h-9"
+			><IconHeartHandshake size={16} />Benefits</Button
+		>
 		<Button
 			variant="outline"
 			class="min-h-9"
