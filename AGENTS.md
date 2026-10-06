@@ -6,7 +6,7 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
+- `/api/finance` is the only financial data path. `LIFE_HUB_URL` is server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
@@ -69,6 +69,22 @@ protects the site and every API route.
   tests, static checks, formatting checks, and the production build.
 
 ## Architecture rules
+
+- Interactive event markers use only this project's `MARKERS_DB` D1 binding
+  and `migrations/`. Creates carry a stable draft UUID for safe retries; reused
+  IDs with different content or deleted IDs conflict. Deletion retains only the
+  consumed ID to prevent stale creates from restoring deleted markers. The `/api/markers` CRUD interface checks revision predicates
+  atomically for updates/deletes and rejects foreign-origin writes. Never put
+  marker content in source, localStorage, the financial estate or another app's
+  resources. Missing storage is an explicit unavailable state.
+- Marker dates are UTC calendar labels. An optional inclusive end date creates
+  a range; points/ranges anchor to their containing chart buckets after exact
+  selected-date filtering. All markers remain accessible in the in-view list.
+- Concealment hides marker free text in labels, tooltips, accessible names and
+  lists, and disables the editor. Dates/relative geometry can remain visible.
+- D1 provisioning uses `scripts/cf-d1.py` and project-owned operator credentials.
+  The explicit unprovisioned database ID must be replaced and migrations applied
+  under deployment approval before this binding can run remotely.
 
 - **Backend logic that exists to serve this site lives HERE** as SvelteKit
   server routes (`+page.server.ts`, `src/routes/api/*/+server.ts`) — it all
