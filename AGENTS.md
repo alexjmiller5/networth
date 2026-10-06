@@ -46,6 +46,11 @@ protects the site and every API route.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
+- Raw price adapters in `src/lib/finance/prices.server.ts` are source-only and
+  are not wired into the assembler. Runtime mappings own instrument identity and
+  currency. Preserve raw price basis, source dates, and explicit unavailable
+  results; a successful fetch never proves holdings or history completeness.
+  Provider limits and remaining activation gates live in `docs/price-history.md`.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
