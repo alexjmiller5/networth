@@ -12,6 +12,16 @@
 	},
 	"workers_dev": true,
 	"preview_urls": false,
+	// Provision Networth's own database and replace this explicit placeholder
+	// before deployment. Local Wrangler uses isolated on-disk D1 state.
+	"d1_databases": [
+		{
+			"binding": "MARKERS_DB",
+			"database_name": "networth-markers",
+			"database_id": "UNPROVISIONED",
+			"migrations_dir": "migrations"
+		}
+	],
 	"secrets": { "required": ["LIFE_HUB_TOKEN"] },
 	// Where the estate lives. The read token (LIFE_HUB_TOKEN) is a Worker
 	// secret pushed by scripts/sync-secrets.sh, never a var.
