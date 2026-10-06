@@ -49,3 +49,21 @@ describe('finance endpoint', () => {
 		expect(await response.text()).not.toContain(environment.LIFE_HUB_TOKEN);
 	});
 });
+
+it('never queries a retired source table even when its retained registry history exists', async () => {
+	const requested: string[] = [];
+	const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const { table } = JSON.parse(String(init?.body));
+		requested.push(table);
+		if (table === 'txns_retired') throw new Error('retired source must not be queried');
+		const rows =
+			table === 'accounts'
+				? [{ id: 'retired-account', source: 'retired', deleted_at: '2030-01-01T00:00:00.000Z' }]
+				: [];
+		return Response.json({ rows });
+	});
+	const response = await GET(event(fetch));
+	expect(response.status).toBe(200);
+	expect(requested).not.toContain('txns_retired');
+	expect(await response.json()).toMatchObject({ accounts: [] });
+});

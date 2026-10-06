@@ -285,12 +285,24 @@ export function assemble(t: EstateTables): Estate {
 
 	const latestRun = new Map<string, HubRow>();
 	for (const r of t.scrape_runs.filter(live)) {
-		const prev = latestRun.get(str(r.source));
-		if (!prev || str(r.finished_at) > str(prev.finished_at)) latestRun.set(str(r.source), r);
+		const gates = object(r.stated_balances);
+		const unitGates = object(gates.units);
+		for (const account of accounts) {
+			if (
+				account.source !== r.source ||
+				(!Object.hasOwn(gates, account.id) && !Object.hasOwn(unitGates, account.id))
+			)
+				continue;
+			const prev = latestRun.get(account.id);
+			const finished = Date.parse(str(r.finished_at));
+			// An explicit malformed/failed checkpoint cannot silently revive older proof.
+			if (!prev || !Number.isFinite(finished) || finished > Date.parse(str(prev.finished_at)))
+				latestRun.set(account.id, r);
+		}
 	}
 	const coverage: AccountCoverage[] = accounts.map((a) => {
 		const rows = txns.filter((r) => r.account_id === a.id);
-		const r = latestRun.get(a.source!);
+		const r = latestRun.get(a.id);
 		const gates = object(r?.stated_balances);
 		const money = gates[a.id];
 		const hasMoney = typeof money === 'number' && Number.isFinite(money);
@@ -333,6 +345,43 @@ export function assemble(t: EstateTables): Estate {
 						break;
 					}
 				}
+			}
+			const rawUnits = object(gates.units)[a.id];
+			const explicitPositions =
+				rawUnits !== null && typeof rawUnits === 'object' && !Array.isArray(rawUnits);
+			const tickers = new Set([
+				...Object.keys(units),
+				...rows.flatMap((t) => (t.ticker ? [t.ticker] : []))
+			]);
+			const flat =
+				rows.every((t) => t.qty == null || t.qty === 0 || Boolean(t.ticker?.trim())) &&
+				[...tickers].every((ticker) => {
+					const stated = Object.hasOwn(units, ticker) ? units[ticker] : 0;
+					const history = rows.filter((t) => t.ticker === ticker);
+					return (
+						stated === 0 &&
+						history.every((t) => t.qty != null) &&
+						Math.abs(history.reduce((sum, t) => sum + (t.qty ?? 0), 0)) <= 0.0015
+					);
+				});
+			if (
+				a.closed &&
+				a.currency === 'USD' &&
+				r?.status === 'ok' &&
+				flag(r.reconciled) &&
+				c.asOf &&
+				c.lastTransaction! <= c.asOf.slice(0, 10) &&
+				hasMoney &&
+				money === 0 &&
+				Math.round(rows.reduce((sum, t) => sum + t.amount, 0) * 100) === 0 &&
+				explicitPositions &&
+				flat
+			) {
+				c.status = 'verified-closed-zero';
+				c.currentBalance = 0;
+				c.reasons = [
+					'Current cash and positions verify zero; historical market values remain unavailable'
+				];
 			}
 		} else {
 			if (a.currency !== 'USD') c.reasons.push('Unsupported or missing account currency');

@@ -36,7 +36,9 @@ export interface Category {
 
 export interface AccountCoverage {
 	account_id: string;
-	status: 'verified' | 'unverified' | 'missing' | 'investment-unvalued';
+	status: 'verified' | 'unverified' | 'missing' | 'investment-unvalued' | 'verified-closed-zero';
+	/** Verified current flat investment only; never a historical price series. */
+	currentBalance?: 0;
 	basis: 'money' | 'units' | 'none';
 	asOf: string | null;
 	firstTransaction: string | null;
