@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Networth widget options</title>
+		<style>
+			:root {
+				color-scheme: light;
+				--paper: #f2f4f5;
+				--ink: #182b2b;
+				--muted: #56666a;
+				--line: #d6dfe0;
+				--green: #176354;
+				--soft: #e4eeea;
+				--gold: #896724;
+				--card: #fff;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+				color: var(--ink);
+				background: var(--paper);
+				font-size: 15px;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+			}
+			main {
+				max-width: 1130px;
+				margin: auto;
+				padding: 36px 24px 60px;
+			}
+			header {
+				display: flex;
+				gap: 20px;
+				justify-content: space-between;
+				align-items: start;
+			}
+			h1 {
+				font-size: 30px;
+				letter-spacing: -1px;
+				margin: 0 0 8px;
+				font-weight: 650;
+			}
+			p {
+				line-height: 1.5;
+				max-width: 65ch;
+				margin: 0 0 14px;
+				color: var(--muted);
+			}
+			h2 {
+				font-size: 18px;
+				margin: 36px 0 14px;
+			}
+			button,
+			select {
+				font: inherit;
+				color: inherit;
+			}
+			button,
+			select {
+				background: var(--card);
+				border: 1px solid var(--line);
+				border-radius: 9px;
+				min-height: 40px;
+				padding: 8px 12px;
+			}
+			button {
+				cursor: pointer;
+			}
+			button:focus-visible,
+			select:focus-visible,
+			input:focus-visible {
+				outline: 3px solid var(--green);
+				outline-offset: 3px;
+			}
+			.tools {
+				display: flex;
+				gap: 14px;
+				flex-wrap: wrap;
+				align-items: center;
+				margin: 22px 0 0;
+			}
+			.tools label {
+				display: flex;
+				gap: 8px;
+				align-items: center;
+			}
+			.tools input {
+				accent-color: var(--green);
+				width: 17px;
+				height: 17px;
+			}
+			.badge {
+				padding: 5px 9px;
+				border: 1px solid var(--line);
+				border-radius: 6px;
+				white-space: nowrap;
+				color: var(--muted);
+				font-size: 12px;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 28px;
+			}
+			.options {
+				display: grid;
+				grid-template-columns: repeat(4, minmax(0, 1fr));
+				gap: 20px;
+			}
+			.option {
+				min-width: 0;
+			}
+			.option h3 {
+				font-size: 14px;
+				font-weight: 600;
+				margin: 14px 0 5px;
+			}
+			.option p {
+				font-size: 13px;
+				line-height: 1.45;
+			}
+			.widget {
+				background: var(--card);
+				border-radius: 25px;
+				min-height: 190px;
+				padding: 20px;
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+				box-shadow: 0 3px 12px #243c3410;
+				border: 1px solid #dde6e1;
+			}
+			.widget.small {
+				min-height: 190px;
+				padding: 18px;
+				gap: 10px;
+			}
+			.widget.primary {
+				background: var(--green);
+				color: white;
+				border-color: var(--green);
+			}
+			.caption {
+				font-size: 12px;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 8px;
+				color: var(--muted);
+			}
+			.primary .caption,
+			.primary .sub {
+				color: #d6e8df;
+			}
+			.lead {
+				font-size: 28px;
+				font-weight: 650;
+				letter-spacing: -0.7px;
+				margin-top: 2px;
+			}
+			.sub {
+				font-size: 12px;
+				color: var(--muted);
+				line-height: 1.35;
+			}
+			.row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 10px;
+				font-size: 14px;
+			}
+			.number {
+				font-variant-numeric: tabular-nums;
+				white-space: nowrap;
+			}
+			.rule {
+				height: 1px;
+				background: var(--line);
+			}
+			.primary .rule {
+				background: #ffffff35;
+			}
+			.pill {
+				border-radius: 5px;
+				background: var(--soft);
+				color: var(--green);
+				font-size: 12px;
+				padding: 4px 7px;
+			}
+			.primary .pill {
+				background: #ffffff20;
+				color: white;
+			}
+			.footer {
+				margin-top: auto;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 8px;
+			}
+			.bar {
+				height: 7px;
+				background: var(--soft);
+				border-radius: 5px;
+				overflow: hidden;
+			}
+			.bar span {
+				display: block;
+				width: 68%;
+				height: 100%;
+				background: var(--green);
+			}
+			.small .lead {
+				font-size: 26px;
+			}
+			.small .row {
+				font-size: 12px;
+			}
+			.small .caption {
+				font-size: 12px;
+			}
+			.icon {
+				width: 20px;
+				height: 20px;
+				flex-shrink: 0;
+				stroke: currentColor;
+				stroke-width: 1.8;
+				fill: none;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+			.status {
+				color: var(--gold);
+			}
+			.design-note {
+				margin-top: 28px;
+				padding-top: 18px;
+				border-top: 1px solid var(--line);
+				font-size: 13px;
+			}
+			.hidden .amount {
+				font-size: 0 !important;
+			}
+			.hidden .amount::after {
+				content: 'Hidden';
+				font-size: 15px;
+				letter-spacing: 0;
+				font-weight: 500;
+			}
+			.notice {
+				display: none;
+			}
+			.stale .current {
+				display: none;
+			}
+			.stale .notice {
+				display: block;
+			}
+			.stale .guide .primary {
+				background: #e5ece9;
+				color: var(--ink);
+				border-color: #cbd9d1;
+			}
+			.stale .guide .primary .caption,
+			.stale .guide .primary .sub {
+				color: var(--muted);
+			}
+			.selection {
+				font-size: 12px;
+				color: var(--green);
+				margin-top: 4px;
+				min-height: 18px;
+			}
+			.keep {
+				width: 100%;
+				margin-top: 10px;
+				background: transparent;
+			}
+			.keep[aria-pressed='true'] {
+				background: var(--soft);
+				border-color: var(--green);
+			}
+			@media (max-width: 850px) {
+				.options {
+					grid-template-columns: repeat(2, minmax(0, 1fr));
+				}
+				.grid {
+					gap: 20px;
+				}
+			}
+			@media (max-width: 560px) {
+				main {
+					padding: 24px 16px;
+				}
+				.grid {
+					grid-template-columns: 1fr;
+				}
+				header {
+					display: block;
+				}
+				header .badge {
+					display: inline-block;
+					margin-top: 5px;
+				}
+				.options {
+					gap: 12px;
+				}
+				.widget.small {
+					padding: 15px;
+					border-radius: 22px;
+					min-height: 205px;
+				}
+				.small .lead {
+					font-size: 23px;
+				}
+				.tools {
+					gap: 12px;
+				}
+				h1 {
+					font-size: 28px;
+				}
+				.options .option p {
+					font-size: 12px;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<header>
+				<div>
+					<h1>Networth, at a glance</h1>
+					<p>
+						Try both everyday widgets, then choose the extras that earn a place on your home screen.
+					</p>
+				</div>
+				<span class="badge">Design preview · fictional data</span>
+			</header>
+			<div class="tools">
+				<label
+					>Shopping for
+					<select id="category">
+						<option>Dining</option>
+						<option>Groceries</option>
+						<option>Travel</option>
+					</select></label
+				><label><input type="checkbox" id="hide" />Hide amounts</label
+				><label><input type="checkbox" id="stale" />Show stale-data state</label>
+			</div>
+			<h2>The two starting points</h2>
+			<section class="grid" aria-label="Primary widget designs">
+				<article class="option guide">
+					<div class="widget primary">
+						<div class="caption">
+							<span id="category-label">Dining</span
+							><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+								<rect x="3" y="5" width="18" height="14" rx="3" />
+								<path d="M3 10h18M7 15h3" />
+							</svg>
+						</div>
+						<div class="current">
+							<div class="row">
+								<span class="lead" id="best-card">Card One</span
+								><span class="lead number" id="best-rate">5%</span>
+							</div>
+							<div class="sub">Highest verified cash reward for this category</div>
+						</div>
+						<div class="notice">
+							<div class="lead">Check latest data</div>
+							<div class="sub">A card suggestion needs current rules and cap usage.</div>
+						</div>
+						<div class="rule"></div>
+						<div class="row current">
+							<span id="alternative">Card Two</span
+							><span class="number" id="alternative-rate">3%</span>
+						</div>
+						<div class="footer">
+							<span class="sub" data-fresh>As of today, 9:20 AM</span
+							><span class="pill">Open comparison</span>
+						</div>
+					</div>
+					<h3>Which card?</h3>
+					<p>
+						Pin a category. See the recommended card and one alternative, with the cap and earning
+						rules behind the comparison.
+					</p>
+					<button class="keep" aria-pressed="true">Keep in preview</button>
+				</article>
+				<article class="option">
+					<div class="widget">
+						<div class="caption">
+							<span>Card balances</span
+							><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M4 6h15v14H4zM4 6l12-3v3M15 11h6v5h-6z" />
+							</svg>
+						</div>
+						<div class="row">
+							<span>Card One</span><strong class="number amount">$128.40</strong>
+						</div>
+						<div class="row">
+							<span>Card Two</span><strong class="number amount">$46.18</strong>
+						</div>
+						<div class="row">
+							<span>Card Three</span><strong class="number amount">$0.00</strong>
+						</div>
+						<div class="rule"></div>
+						<div class="footer">
+							<span class="sub" data-fresh>Posted balances · 9:20 AM</span
+							><span class="sub">Open accounts</span>
+						</div>
+					</div>
+					<h3>What is on my cards?</h3>
+					<p>
+						Pin the accounts you want to watch. Posted balances stay separate from pending charges,
+						credit limits and payment amounts.
+					</p>
+					<button class="keep" aria-pressed="true">Keep in preview</button>
+				</article>
+			</section>
+			<h2>Useful additions to try</h2>
+			<section class="options" aria-label="Additional widget designs">
+				<article class="option">
+					<div class="widget small">
+						<div class="caption">Quarterly bonus cap</div>
+						<div class="lead amount">$640 left</div>
+						<div class="sub">Card One · dining</div>
+						<div class="bar" aria-label="68 percent of bonus cap used"><span></span></div>
+						<div class="footer sub">Resets Jan 1<br /><span data-fresh>As of 9:20 AM</span></div>
+					</div>
+					<h3>Cap headroom</h3>
+					<p>See when a category card is approaching its bonus limit.</p>
+					<button class="keep" aria-pressed="false">Add to preview</button>
+				</article>
+				<article class="option">
+					<div class="widget small">
+						<div class="caption">Ready to redeem</div>
+						<div class="lead amount">$18.40</div>
+						<div class="sub">Available via cash deposit</div>
+						<div class="rule"></div>
+						<div class="row"><span>Still waiting</span><strong class="amount">$7.20</strong></div>
+						<div class="footer sub">Open reward balances</div>
+					</div>
+					<h3>Available rewards</h3>
+					<p>Separate redeemable rewards from amounts still below a minimum or awaiting posting.</p>
+					<button class="keep" aria-pressed="false">Add to preview</button>
+				</article>
+				<article class="option">
+					<div class="widget small">
+						<div class="caption">Rewards expiring</div>
+						<div class="lead">24 days</div>
+						<div class="sub">Example Miles</div>
+						<div class="row"><strong class="amount">2,400 miles</strong></div>
+						<div class="footer sub">Verified earned lot<br />Open expiry details</div>
+					</div>
+					<h3>Expiry watch</h3>
+					<p>Show an evidenced deadline. Unknown activity dates never become a guessed expiry.</p>
+					<button class="keep" aria-pressed="false">Add to preview</button>
+				</article>
+				<article class="option">
+					<div class="widget small">
+						<div class="caption">Collection status</div>
+						<div class="lead status">2 need review</div>
+						<div class="sub">One account unavailable<br />One needs reconciliation</div>
+						<div class="rule"></div>
+						<div class="footer sub">Captured yesterday<br />Open review status</div>
+					</div>
+					<h3>Data freshness</h3>
+					<p>Know which balances and recommendations need another collection or review.</p>
+					<button class="keep" aria-pressed="false">Add to preview</button>
+				</article>
+			</section>
+			<p class="selection" role="status" id="selection">2 designs selected in this preview.</p>
+			<div class="design-note">
+				<p>
+					This preview changes fictional examples only. Widget taps open the relevant detail screen;
+					they do not redeem rewards, pay a bill or start bank collection. Native installation and
+					authenticated data delivery are separate implementation steps.
+				</p>
+				<p>
+					Amounts are marked sensitive in the native design. Each widget displays its actual source
+					date, and missing data stays unavailable. Points-based recommendations will distinguish
+					your valuation estimate from guaranteed cash rewards.
+				</p>
+			</div>
+		</main>
+		<script>
+			const category = document.querySelector('#category');
+			category.addEventListener('change', () => {
+				const choices = {
+					Dining: ['Card One', '5%', 'Card Two', '3%'],
+					Groceries: ['Card Three', '4%', 'Card One', '2%'],
+					Travel: ['Card Two', '3%', 'Card Three', '2%']
+				};
+				const row = choices[category.value];
+				document.querySelector('#category-label').textContent = category.value;
+				['best-card', 'best-rate', 'alternative', 'alternative-rate'].forEach(
+					(id, i) => (document.getElementById(id).textContent = row[i])
+				);
+			});
+			document
+				.querySelector('#hide')
+				.addEventListener('change', (e) =>
+					document.body.classList.toggle('hidden', e.target.checked)
+				);
+			document.querySelector('#stale').addEventListener('change', (e) => {
+				document.body.classList.toggle('stale', e.target.checked);
+				document.querySelectorAll('[data-fresh]').forEach((el) => {
+					el.dataset.original ??= el.textContent;
+					el.textContent = e.target.checked ? 'As of 3 days ago' : el.dataset.original;
+				});
+			});
+			document.querySelectorAll('.keep').forEach((button) =>
+				button.addEventListener('click', () => {
+					const enabled = button.getAttribute('aria-pressed') !== 'true';
+					button.setAttribute('aria-pressed', String(enabled));
+					button.textContent = enabled ? 'Keep in preview' : 'Add to preview';
+					document.querySelector('#selection').textContent =
+						document.querySelectorAll('.keep[aria-pressed=true]').length +
+						' designs selected in this preview.';
+				})
+			);
+		</script>
+	</body>
+</html>
