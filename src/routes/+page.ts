@@ -8,7 +8,7 @@ import type { Estate } from '$lib/finance/assemble';
 export const load: PageLoad = async ({ fetch, depends }) => {
 	depends('finance:data');
 	try {
-		const result = await readDashboard<Estate>('/api/finance', fetch);
+		const result = await readDashboard<Estate>('/api/finance', fetch, { timeoutMs: 45_000 });
 		return { ...result.data, savedAt: result.savedAt };
 	} catch (failure) {
 		throw error(

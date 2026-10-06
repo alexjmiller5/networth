@@ -178,7 +178,10 @@
 		refreshing = true;
 		refreshError = '';
 		try {
-			const result = await readDashboard<Estate>('/api/finance', fetch, { refresh: true });
+			const result = await readDashboard<Estate>('/api/finance', fetch, {
+				refresh: true,
+				timeoutMs: 45_000
+			});
 			data = { ...result.data, savedAt: result.savedAt };
 		} catch (error) {
 			refreshError =
