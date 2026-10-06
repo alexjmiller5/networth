@@ -7,6 +7,7 @@ own quiescence, change provider, or release the server's physical-domain lease.
 import json
 import os
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -40,8 +41,26 @@ class Journal:
             "CREATE UNIQUE INDEX IF NOT EXISTS active_domain ON runs(domain) WHERE closed=0"
         )
 
+        self.db.execute("""CREATE TABLE IF NOT EXISTS outbox (
+            channel TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL,
+            decision TEXT, PRIMARY KEY(channel,id))""")
+        self.db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS pending_channel ON outbox(channel) WHERE decision IS NULL"
+        )
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS poll (singleton INTEGER PRIMARY KEY CHECK(singleton=1), payload TEXT NOT NULL)"
+        )
+
     def close(self):
         self.db.close()
+
+    def active(self):
+        return [
+            json.loads(row[0])
+            for row in self.db.execute(
+                "SELECT state FROM runs WHERE closed=0 ORDER BY id"
+            )
+        ]
 
     @contextmanager
     def transaction(self):
@@ -219,3 +238,68 @@ class Journal:
                 raise Conflict("unresolved operation")
             state["capture_closed"] = True
             self._save(state)
+
+    def retain(self, channel, message_id, payload):
+        """Persist exact bytes BEFORE delivery. One unresolved message per channel."""
+        encoded = canonical(payload)
+        with self.transaction():
+            old = self.db.execute(
+                "SELECT payload FROM outbox WHERE channel=? AND id=?",
+                (channel, message_id),
+            ).fetchone()
+            if old:
+                if old[0] != encoded:
+                    raise Conflict("message identity reused with changed payload")
+                return
+            try:
+                self.db.execute(
+                    "INSERT INTO outbox VALUES (?,?,?,NULL)",
+                    (channel, message_id, encoded),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise Conflict("resolve pending message before advancing") from exc
+
+    def pending(self, channel):
+        row = self.db.execute(
+            "SELECT payload FROM outbox WHERE channel=? AND decision IS NULL",
+            (channel,),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def acknowledge(self, channel, message_id, decision):
+        """Caller validates authenticated wire receipt before local acknowledgment."""
+        encoded = canonical(decision)
+        with self.transaction():
+            old = self.db.execute(
+                "SELECT decision FROM outbox WHERE channel=? AND id=?",
+                (channel, message_id),
+            ).fetchone()
+            if old is None or (old[0] is not None and old[0] != encoded):
+                raise Conflict("unknown or changed message decision")
+            self.db.execute(
+                "UPDATE outbox SET decision=? WHERE channel=? AND id=?",
+                (encoded, channel, message_id),
+            )
+
+    def poll_request(self, wait_seconds):
+        if type(wait_seconds) is not int or not 0 <= wait_seconds <= 25:
+            raise Conflict("invalid poll duration")
+        with self.transaction():
+            old = self.db.execute(
+                "SELECT payload FROM poll WHERE singleton=1"
+            ).fetchone()
+            if old:
+                return json.loads(old[0])
+            request = {"request_id": str(uuid.uuid4()), "wait_seconds": wait_seconds}
+            self.db.execute("INSERT INTO poll VALUES(1,?)", (canonical(request),))
+            return request
+
+    def complete_poll(self, request_id):
+        """Only after validating and durably recording the response/claim."""
+        with self.transaction():
+            old = self.db.execute(
+                "SELECT payload FROM poll WHERE singleton=1"
+            ).fetchone()
+            if old is None or json.loads(old[0])["request_id"] != request_id:
+                raise Conflict("unknown poll")
+            self.db.execute("DELETE FROM poll WHERE singleton=1")
