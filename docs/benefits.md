@@ -34,13 +34,13 @@ Reload fetches saved source observations, not a new provider collection. A faile
 reload preserves the previous view. Cached reads show the cache save timestamp,
 which is distinct from provider and capture dates.
 
-Home-page navigation integration is pending in the owning dashboard change. This
-slice supplies `/benefits` and its return link without changing the home page or
-`/api/finance`. Deployment and authenticated live verification are separate steps.
+The dashboard links to `/benefits`, which includes a return link. Navigation keeps
+the saved dashboard filters and shared privacy preference. `/api/finance` is
+unchanged. Deployment and authenticated live verification are separate steps.
 
 Validation uses synthetic fixtures only: model/API unit tests and
 `scripts/test-benefits.mjs <owned-CDP-page-websocket> <local-dev-base-URL>`.
 The browser driver checks privacy before paint and after reload, native metrics,
-zero/missing/suppressed states, history, failed refresh, empty state, and 390px
+zero/missing/suppressed states, history, dashboard navigation, failed refresh, empty state, and 390px
 layout. It only intercepts reads on its own local test target. Optional
 `BENEFITS_SCREENSHOT` writes its mobile screenshot to the requested path.
