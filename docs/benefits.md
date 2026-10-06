@@ -6,7 +6,8 @@
 No resource, credential, or data-write path is added.
 
 The endpoint requests only `benefit_plans` and `benefit_snapshots`, with fixed
-column allowlists. It follows the Life rows-pull `next_cursor` / `after` contract,
+column allowlists. It requests the supported complete-table response initially, then follows any
+returned Life rows-pull `next_cursor` / `after` with bounded 200-row pages,
 uses one deadline per table, and rejects redirects, malformed pages, and
 nonadvancing cursors. A later-page failure rejects the whole result. Required
 source evidence references are validated server-side and omitted from the browser
