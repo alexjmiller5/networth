@@ -97,7 +97,7 @@ describe('hub pagination', () => {
 			});
 			const body = JSON.parse(String(init?.body));
 			expect(body.since).toBe('');
-			expect(body.limit).toBe(200);
+			expect(body.limit).toBe(body.after ? 200 : undefined);
 			requests.push(body);
 			if (body.table === 'accounts') {
 				if (!body.after)
@@ -204,4 +204,24 @@ describe('hub pagination', () => {
 		});
 		expect(calls).toBe(2);
 	});
+});
+
+// The hub supports complete-table responses when limit is omitted. Splitting a
+// cold read into many serial pages can exceed both endpoint and browser deadlines.
+it('loads a large complete table without forcing serial small-page round trips', async () => {
+	const requests: string[] = [];
+	const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const body = JSON.parse(String(init?.body));
+		requests.push(body.table);
+		expect(body.limit).toBeUndefined();
+		if (body.table === 'accounts') return Response.json({ rows: [account('account-1')] });
+		if (body.table === 'txns_bank')
+			return Response.json({
+				rows: Array.from({ length: 1001 }, (_, i) => transaction(`txn-${i}`, 1))
+			});
+		return Response.json({ rows: [] });
+	});
+	const data = (await (await GET(event(fetch))).json()) as Estate;
+	expect(data.txns).toHaveLength(1001);
+	expect(requests.filter((table) => table === 'txns_bank')).toHaveLength(1);
 });
