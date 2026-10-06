@@ -32,7 +32,7 @@
 - [x] Write failing event tests in `src/lib/finance/reward-history.spec.ts`; implement `selectRewardEventHeads(events)` in `reward-history.ts`. Assert one posted head, separate reversal/sibling identities, preserved history and all structural diagnostics.
 - [x] Write failing valuation tests; implement `selectRedemptionValuationHeads(events, valuations)`. Assert cross-basis/cross-version continuity, historical exact binding, conflicting/missing membership and affected-group isolation.
 - [x] Run focused and full tests, structural mutations, Svelte check, formatting and production build. Obtain fresh read-only review.
-Integration: commit/push `feat/reward-history-heads` and open a source-only draft PR stacked on date viewport.
+      Integration: commit/push `feat/reward-history-heads` and open a source-only draft PR stacked on date viewport.
 
 ## Verification ledger
 
