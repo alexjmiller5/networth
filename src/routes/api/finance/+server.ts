@@ -66,30 +66,40 @@ async function pull(
 	columns: string[],
 	fetchFn: typeof fetch
 ): Promise<HubRow[]> {
-	const res = await fetchFn(`${hub}/v1/rows/pull`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-		body: JSON.stringify({ table, columns, since: '' }),
-		signal: AbortSignal.timeout(20_000),
-		// Workers supports manual/follow only. Reject 3xx below, keeping the
-		// credential on this exact configured destination.
-		redirect: 'manual'
-	});
-	if (!res.ok) {
-		console.error('Finance hub request failed', { table, status: res.status });
-		throw new Error('Hub request failed');
+	const rows: HubRow[] = [];
+	let after = '';
+	const signal = AbortSignal.timeout(20_000);
+	while (true) {
+		const res = await fetchFn(`${hub}/v1/rows/pull`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			body: JSON.stringify({ table, columns, since: '', limit: 200, ...(after ? { after } : {}) }),
+			signal,
+			// Workers supports manual/follow only. Reject 3xx below, keeping the
+			// credential on this exact configured destination.
+			redirect: 'manual'
+		});
+		if (!res.ok) {
+			console.error('Finance hub request failed', { table, status: res.status });
+			throw new Error('Hub request failed');
+		}
+		const body: unknown = await res.json();
+		if (
+			!body ||
+			typeof body !== 'object' ||
+			!('rows' in body) ||
+			!Array.isArray(body.rows) ||
+			body.rows.some((row: unknown) => !row || typeof row !== 'object' || Array.isArray(row))
+		) {
+			throw new Error('Invalid hub response');
+		}
+		const cursor = 'next_cursor' in body ? body.next_cursor : null;
+		if (cursor != null && (typeof cursor !== 'string' || cursor <= after || !body.rows.length))
+			throw new Error('Invalid hub cursor');
+		for (const row of body.rows) rows.push(row as HubRow);
+		if (cursor == null) return rows; // Legacy hubs return the complete table without a cursor.
+		after = cursor;
 	}
-	const body: unknown = await res.json();
-	if (
-		!body ||
-		typeof body !== 'object' ||
-		!('rows' in body) ||
-		!Array.isArray(body.rows) ||
-		body.rows.some((row: unknown) => !row || typeof row !== 'object' || Array.isArray(row))
-	) {
-		throw new Error('Invalid hub response');
-	}
-	return body.rows as HubRow[];
 }
 
 export const GET: RequestHandler = async ({ platform, fetch }) => {

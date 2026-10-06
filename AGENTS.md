@@ -13,6 +13,12 @@ protects the site and every API route.
   enabled for the public URL read path. Local runtime tests cannot prove
   Cloudflare's production routing; verify an authenticated API response
   after deploying.
+  Pull every `next_cursor` page before assembly, sending the opaque cursor as
+  `after` to the same configured destination with the same table/column list.
+  Missing/null cursors end a pull (including legacy complete responses).
+  Continuing pages must be nonempty with a strictly advancing string cursor;
+  malformed or failed pages reject the whole response. Each table's complete
+  pull shares a 20-second timeout.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
