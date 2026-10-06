@@ -334,7 +334,9 @@ deploys target his Cloudflare account.
   shell caches. Never intercept API mutations or Cloudflare Access routes.
 - `readDashboard` stores successful JSON GETs in device-local CacheStorage. Offline
   reads use the saved snapshot immediately; weak connections get 750 ms before
-  fallback, with an 8-second request bound. Explicit refreshes require fresh data.
+  fallback. Finance cold reads and explicit refreshes allow 45 seconds for the
+  two bounded server phases and response transfer; other reads default to 8 seconds.
+  Explicit refreshes require fresh data.
   Saved snapshots show their save time. Errors, redirects, and login HTML cannot
   replace a successful snapshot. Clearing website data removes offline data.
 - Reconnect uses a full `/?online=1` navigation, bypassing the cached document so

@@ -162,3 +162,54 @@ it('preserves the HTTP status for a dashboard with no data yet', async () => {
 	vi.stubGlobal('fetch', async () => new Response(null, { status: 404 }));
 	await expect(readDashboard('/api/data')).rejects.toMatchObject({ cause: 404 });
 });
+
+it('allows a bounded finance cold read to finish after the short default deadline', async () => {
+	vi.useFakeTimers();
+	let finish!: (response: Response) => void;
+	vi.stubGlobal(
+		'fetch',
+		() =>
+			new Promise<Response>((resolve) => {
+				finish = resolve;
+			})
+	);
+	let failure: unknown;
+	const pending = readDashboard('/api/finance', fetch, { timeoutMs: 45000 }).catch((error) => {
+		failure = error;
+		return null;
+	});
+	await vi.advanceTimersByTimeAsync(9000);
+	expect(failure).toBeUndefined();
+	finish(json({ total: 24 }));
+	expect((await pending)?.data).toEqual({ total: 24 });
+});
+
+it('still aborts a stalled extended read at its exact deadline', async () => {
+	vi.useFakeTimers();
+	let signal!: AbortSignal;
+	vi.stubGlobal('fetch', (_url: string, init: RequestInit) => {
+		signal = init.signal!;
+		return new Promise(() => {});
+	});
+	let failure: unknown;
+	const pending = readDashboard('/api/finance', fetch, { timeoutMs: 45000 }).catch((error) => {
+		failure = error;
+	});
+	await vi.advanceTimersByTimeAsync(44999);
+	expect(failure).toBeUndefined();
+	expect(signal.aborted).toBe(false);
+	await vi.advanceTimersByTimeAsync(1);
+	await pending;
+	expect(failure).toBeInstanceOf(Error);
+	expect(signal.aborted).toBe(true);
+});
+
+it('keeps fast saved-data fallback with an extended network deadline', async () => {
+	await readDashboard('/api/finance');
+	vi.useFakeTimers();
+	vi.stubGlobal('fetch', () => new Promise(() => {}));
+	const pending = readDashboard('/api/finance', fetch, { timeoutMs: 45000 });
+	await vi.advanceTimersByTimeAsync(750);
+	expect((await pending).data).toEqual({ total: 12 });
+	await vi.advanceTimersByTimeAsync(45000);
+});
