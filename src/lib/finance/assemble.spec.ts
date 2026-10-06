@@ -604,3 +604,175 @@ describe('assemble', () => {
 		expect(result.txns[0].balanceAmount).toBeNull();
 	});
 });
+
+describe('per-account checkpoints', () => {
+	it('retains an account checkpoint when a newer same-source run checks only its sibling', () => {
+		const result = assemble({
+			...tables,
+			scrape_runs: [
+				...tables.scrape_runs,
+				{
+					...tables.scrape_runs[0],
+					id: 'sibling-run',
+					finished_at: '2026-02-07T00:00:00.000Z',
+					stated_balances: { sibling: 0 }
+				}
+			]
+		});
+		expect(result.coverage[0]).toMatchObject({
+			status: 'verified',
+			asOf: '2026-02-06T00:00:00.000Z'
+		});
+		expect(
+			deriveBalances(result.txns, result.accounts, '2026-02-06', '2026-02-07', result.coverage)
+				.series[0].data
+		).toEqual([-655.98, -655.98]);
+	});
+	it('does not attach a sibling-only checkpoint date to an account with no evidence', () => {
+		const result = assemble({
+			...tables,
+			scrape_runs: [{ ...tables.scrape_runs[0], stated_balances: { sibling: 0 } }]
+		});
+		expect(result.coverage[0]).toMatchObject({ status: 'unverified', asOf: null, basis: 'none' });
+	});
+	it('treats an explicit newer unusable account gate as unknown rather than falling back', () => {
+		const result = assemble({
+			...tables,
+			scrape_runs: [
+				...tables.scrape_runs,
+				{
+					...tables.scrape_runs[0],
+					finished_at: '2026-02-07T00:00:00.000Z',
+					stated_balances: { chk: null }
+				}
+			]
+		});
+		expect(result.coverage[0]).toMatchObject({
+			status: 'unverified',
+			asOf: '2026-02-07T00:00:00.000Z'
+		});
+	});
+	it('orders account checkpoints by actual instant across timezone offsets', () => {
+		const result = assemble({
+			...tables,
+			scrape_runs: [
+				{ ...tables.scrape_runs[0], finished_at: '2026-02-06T03:00:00.000Z' },
+				{
+					...tables.scrape_runs[0],
+					finished_at: '2026-02-05T23:00:00-05:00',
+					stated_balances: { chk: 0 }
+				}
+			]
+		});
+		expect(result.coverage[0]).toMatchObject({
+			status: 'unverified',
+			asOf: '2026-02-05T23:00:00-05:00'
+		});
+	});
+});
+
+function closedInvestment(): EstateTables {
+	return {
+		accounts: [
+			{
+				id: 'investment',
+				name: 'Closed investment',
+				bank: 'Example',
+				type: 'brokerage',
+				source: 'example',
+				currency: 'USD',
+				is_closed: 1
+			}
+		],
+		overlay: [],
+		shares: [],
+		categories: [],
+		points: [],
+		venmo_statement_lines: [],
+		txns: {
+			example: [
+				{
+					id: 'purchase',
+					account_id: 'investment',
+					date: '2030-01-01',
+					amount: -100,
+					ticker: 'FUND',
+					qty: 1
+				},
+				{
+					id: 'sale',
+					account_id: 'investment',
+					date: '2030-01-02',
+					amount: 100,
+					ticker: 'FUND',
+					qty: -1
+				}
+			]
+		},
+		scrape_runs: [
+			{
+				source: 'example',
+				finished_at: '2030-01-03T00:00:00.000Z',
+				status: 'ok',
+				reconciled: 1,
+				stated_balances: { investment: 0, units: { investment: { FUND: 0 } } }
+			}
+		]
+	};
+}
+describe('verified closed investment current zero', () => {
+	it('verifies cash and flat positions without inventing historical market values', () => {
+		const e = assemble(closedInvestment());
+		expect(e.coverage[0]).toMatchObject({
+			status: 'verified-closed-zero',
+			currentBalance: 0,
+			asOf: '2030-01-03T00:00:00.000Z'
+		});
+		expect(e.txns.every((t) => t.balanceAmount === null)).toBe(true);
+		expect(
+			deriveBalances(e.txns, e.accounts, '2030-01-01', '2030-01-03', e.coverage).series
+		).toEqual([]);
+	});
+	it.each([
+		'open',
+		'missing cash',
+		'missing units',
+		'cash mismatch',
+		'nonzero stated cash',
+		'nonzero units',
+		'failed',
+		'newer transaction',
+		'no history',
+		'malformed units'
+	])('does not invent zero with %s', (reason) => {
+		const t = closedInvestment();
+		const gate = t.scrape_runs[0].stated_balances as Record<string, unknown>;
+		if (reason === 'open') t.accounts[0].is_closed = 0;
+		if (reason === 'missing cash') delete gate.investment;
+		if (reason === 'missing units') delete gate.units;
+		if (reason === 'nonzero stated cash') gate.investment = 1;
+		if (reason === 'cash mismatch') t.txns.example[1].amount = 99;
+		if (reason === 'nonzero units') gate.units = { investment: { FUND: 1 } };
+		if (reason === 'failed') t.scrape_runs[0].status = 'failed';
+		if (reason === 'newer transaction') t.txns.example[1].date = '2030-01-04';
+		if (reason === 'no history') t.txns.example = [];
+		if (reason === 'malformed units') gate.units = { investment: null };
+		expect(assemble(t).coverage[0].currentBalance).toBeUndefined();
+	});
+	it('accepts explicit no-positions evidence only with a flat ledger and verified cash', () => {
+		const t = closedInvestment();
+		t.scrape_runs[0].stated_balances = { investment: 0, units: { investment: {} } };
+		expect(assemble(t).coverage[0].currentBalance).toBe(0);
+		t.txns.example[1].qty = 0;
+		expect(assemble(t).coverage[0].currentBalance).toBeUndefined();
+	});
+});
+
+it('does not verify a closed zero when quantity evidence lacks an instrument identity', () => {
+	const t = closedInvestment();
+	t.scrape_runs[0].stated_balances = { investment: 0, units: { investment: {} } };
+	t.txns.example = [
+		{ id: 'unresolved-position', account_id: 'investment', date: '2030-01-01', amount: 0, qty: 1 }
+	];
+	expect(assemble(t).coverage[0].currentBalance).toBeUndefined();
+});

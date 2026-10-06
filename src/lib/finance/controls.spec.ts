@@ -433,3 +433,130 @@ describe('page chart view', () => {
 		expect(pointsAt(rows, '2026-01-01')).toEqual([]);
 	});
 });
+
+it('shows verified closed zero only in current balance overview, never backfills chart history', () => {
+	const registry = [
+		{
+			id: 'closed-investment',
+			name: 'Closed investment',
+			bank: 'Example',
+			type: 'brokerage' as const,
+			closed: true
+		}
+	];
+	const coverage = [
+		{
+			account_id: 'closed-investment',
+			status: 'verified-closed-zero' as const,
+			basis: 'money' as const,
+			currentBalance: 0 as const,
+			asOf: '2026-01-03T00:00:00.000Z',
+			firstTransaction: '2026-01-01',
+			lastTransaction: '2026-01-02',
+			transactionCount: 2,
+			reasons: []
+		}
+	];
+	const current = state({
+		presentation: 'overview',
+		dateStart: '2026-01-01',
+		dateEnd: '2026-01-03'
+	});
+	expect(buildView([], registry, [], current, coverage).summary).toEqual([
+		{ key: 'closed-investment', value: 0 }
+	]);
+	for (const patch of [
+		{ presentation: 'chart' as const },
+		{ dateEnd: '2026-01-02' },
+		{ measure: 'activity' as const }
+	]) {
+		const v = buildView([], registry, [], { ...current, ...patch }, coverage);
+		expect(v.data.series).toEqual([]);
+		expect(v.summary[0].value).toBeNull();
+	}
+});
+
+it('allows hiding cash while keeping a verified closed zero visible in Overview', () => {
+	const registry = [
+		...accounts,
+		{
+			id: 'closed',
+			name: 'Closed investment',
+			bank: 'Example',
+			type: 'brokerage' as const,
+			closed: true
+		}
+	];
+	const coverage = [
+		{
+			account_id: 'account-1',
+			status: 'verified' as const,
+			basis: 'money' as const,
+			asOf: max,
+			firstTransaction: min,
+			lastTransaction: min,
+			transactionCount: 1,
+			reasons: []
+		},
+		{
+			account_id: 'closed',
+			status: 'verified-closed-zero' as const,
+			currentBalance: 0 as const,
+			basis: 'money' as const,
+			asOf: max,
+			firstTransaction: min,
+			lastTransaction: min,
+			transactionCount: 1,
+			reasons: []
+		}
+	];
+	const current = state({ presentation: 'overview' });
+	const v = buildView(
+		[{ account_id: 'account-1', date: min, amount: 100 }],
+		registry,
+		[],
+		current,
+		coverage
+	);
+	expect(v.applicable).toContain('closed');
+	expect(toggleHidden(current.hidden, 'account', 'account-1', v.applicable).account).toEqual([
+		'account-1'
+	]);
+});
+
+it('persists local amount concealment independently of filters and restores it before display', () => {
+	expect(restore().hideAmounts).toBe(false);
+	const c = state({ hideAmounts: true, accountStatuses: ['closed'] });
+	let saved = '';
+	writeControls(
+		{
+			setItem: (_key, value) => {
+				saved = value;
+			}
+		},
+		c
+	);
+	expect(restore(saved)).toMatchObject({ hideAmounts: true, accountStatuses: ['closed'] });
+	expect(restore('{"hideAmounts":"true"}').hideAmounts).toBe(false);
+});
+
+describe('initial date horizon', () => {
+	it('starts at 90 days while retaining an explicit saved longer preset', () => {
+		const fresh = readControls(undefined, '2020-01-01', '2026-10-06');
+		expect([fresh.activePreset, fresh.dateStart, fresh.dateEnd]).toEqual([
+			'90D',
+			'2026-07-09',
+			'2026-10-06'
+		]);
+		const saved = readControls(
+			{ getItem: () => JSON.stringify({ activePreset: 'ALL', bucket: 'month' }) },
+			'2020-01-01',
+			'2026-10-06'
+		);
+		expect([saved.activePreset, saved.dateStart, saved.bucket]).toEqual([
+			'ALL',
+			'2020-01-01',
+			'month'
+		]);
+	});
+});
