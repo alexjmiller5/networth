@@ -1,0 +1,46 @@
+[
+	{
+		"name": "event-unicode",
+		"request": {
+			"event_id": "événement-1",
+			"sequence": 7,
+			"expected_revision": 10,
+			"lease_generation": "lease-α",
+			"kind": "run_observed",
+			"payload": {
+				"transport": "unavailable",
+				"conversation": null,
+				"readiness": {
+					"native_identity": {
+						"state": "unavailable",
+						"reason": "未確認\\\"\n"
+					},
+					"user_reachability": {
+						"state": "unavailable",
+						"reason": "未確認\\\"\n"
+					},
+					"collector_context": {
+						"state": "unavailable",
+						"reason": "未確認\\\"\n"
+					},
+					"source_controls": {
+						"state": "unavailable",
+						"reason": "未確認\\\"\n"
+					}
+				}
+			}
+		},
+		"canonical": "{\"event_id\":\"événement-1\",\"expected_revision\":10,\"kind\":\"run_observed\",\"lease_generation\":\"lease-α\",\"payload\":{\"conversation\":null,\"readiness\":{\"collector_context\":{\"reason\":\"未確認\\\\\\\"\\n\",\"state\":\"unavailable\"},\"native_identity\":{\"reason\":\"未確認\\\\\\\"\\n\",\"state\":\"unavailable\"},\"source_controls\":{\"reason\":\"未確認\\\\\\\"\\n\",\"state\":\"unavailable\"},\"user_reachability\":{\"reason\":\"未確認\\\\\\\"\\n\",\"state\":\"unavailable\"}},\"transport\":\"unavailable\"},\"sequence\":7}",
+		"sha256": "3358b6d83a6e040419fbb96eabc00e268edebdae0d34b98a00afe86a788fd113"
+	},
+	{
+		"name": "start-safe-integer",
+		"request": {
+			"instruction_id": "instruction-β",
+			"expected_revision": 9007199254740991,
+			"lease_generation": "lease-α"
+		},
+		"canonical": "{\"expected_revision\":9007199254740991,\"instruction_id\":\"instruction-β\",\"lease_generation\":\"lease-α\"}",
+		"sha256": "da61c4860de5807e04fa93cf112bb11563308e410176189afc9ad5f4d8a9e62a"
+	}
+]
