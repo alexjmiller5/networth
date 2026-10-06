@@ -18,6 +18,7 @@ export const STORAGE_KEY = 'networth-ui';
 export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export interface Controls {
+	hideAmounts: boolean;
 	presentation: 'chart' | 'overview';
 	accountStatuses: ('open' | 'closed')[];
 	assetClasses: AssetClass[];
@@ -103,6 +104,7 @@ export function readControls(
 	) as Controls['hidden'];
 	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
 	return {
+		hideAmounts: saved.hideAmounts === true,
 		presentation: choice(saved.presentation, ['chart', 'overview'], 'chart'),
 		accountStatuses: accountStatuses.length
 			? accountStatuses
