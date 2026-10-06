@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { formatMoney, formatUnits, formatCoverage } from '$lib/finance/display';
+	import IconEye from '@tabler/icons-svelte/icons/eye';
+	import IconEyeOff from '@tabler/icons-svelte/icons/eye-off';
 	import { readDashboard } from '$lib/offline';
 	import Seo from '$lib/components/seo.svelte';
 	import BalanceChart from '$lib/components/BalanceChart.svelte';
@@ -44,7 +47,7 @@
 		writeControls
 	} from '$lib/finance/controls';
 	import { accountGroup, type Bucket } from '$lib/finance/series';
-	import type { GroupBy } from '$lib/finance/types';
+	import type { GroupBy, AccountCoverage } from '$lib/finance/types';
 	import type { Estate } from '$lib/finance/assemble';
 
 	let { data }: { data: Estate & { savedAt: string | null } } = $props();
@@ -162,19 +165,8 @@
 		controls.dateStart = next.start;
 		controls.dateEnd = next.end;
 	}
-	const money = (v: number): string =>
-		(v === 0 ? 0 : v).toLocaleString('en-US', {
-			style: 'currency',
-			currency: 'USD',
-			maximumFractionDigits: 2
-		});
-	const coverageLabels = {
-		verified: 'Verified',
-		'verified-closed-zero': 'Verified current zero',
-		unverified: 'Unverified',
-		missing: 'Missing transactions',
-		'investment-unvalued': 'Investment value unavailable'
-	};
+	const money = (v: number): string => formatMoney(v, controls.hideAmounts);
+	const coverageText = (c: AccountCoverage) => formatCoverage(c, controls.hideAmounts);
 	const selectedCoverage = $derived(
 		data.coverage.filter((c) => view.accountIds.includes(c.account_id))
 	);
@@ -238,6 +230,16 @@
 		</p>{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
+		<Button
+			variant="outline"
+			class="min-h-9"
+			aria-pressed={controls.hideAmounts}
+			title="Conceal amounts on this device; account names and chart shapes stay visible"
+			onclick={() => (controls.hideAmounts = !controls.hideAmounts)}
+		>
+			{#if controls.hideAmounts}<IconEye size={16} />Show amounts{:else}<IconEyeOff size={16} />Hide
+				amounts{/if}
+		</Button>
 		<Select.Root
 			type="single"
 			value={controls.presentation}
@@ -620,7 +622,11 @@
 					: undefined}
 				<article
 					class="flex min-w-0 flex-col gap-1 rounded-md border p-2"
-					title={row.value === null && !view.isFlow ? coverage?.reasons.join(' · ') : undefined}
+					title={row.value === null && !view.isFlow
+						? coverage
+							? coverageText(coverage).details
+							: undefined
+						: undefined}
 				>
 					<div class="flex items-start gap-2 text-xs">
 						{#if iconFor(row.key) && (groupBy === 'account' || groupBy === 'bank')}<img
@@ -651,9 +657,7 @@
 						{#if account?.closed}Closed ·
 						{/if}
 						{#if view.isFlow}{row.value === null ? 'No categorized activity' : view.title}
-						{:else if row.value === null}{coverage
-								? coverageLabels[coverage.status]
-								: 'Not verified'}
+						{:else if row.value === null}{coverage ? coverageText(coverage).label : 'Not verified'}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
 					</p>
@@ -663,6 +667,7 @@
 	{:else}
 		<BalanceChart
 			data={view.data}
+			hideAmounts={controls.hideAmounts}
 			bucket={controls.bucket}
 			kind={controls.kind}
 			net={view.isFlow && flowMode === 'both'}
@@ -692,7 +697,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
 		<span
 			>{incomplete
-				? 'Incomplete historical coverage. Charts include verified monetary accounts; Overview also shows verified closed investment zeroes.'
+				? 'Incomplete historical coverage. Charts include verified monetary accounts; current closed-account balances may appear in Overview.'
 				: 'Balances include verified monetary accounts.'}</span
 		>
 		<Button variant="outline" class="min-h-9" onclick={refresh} disabled={refreshing}
@@ -709,12 +714,12 @@
 				<li class="break-words">
 					<span class="font-medium"
 						>{accounts.find((a) => a.id === c.account_id)?.name ?? c.account_id}</span
-					>: {coverageLabels[c.status]}
+					>: {coverageText(c).label}
 					{#if c.asOf}<span class="text-muted-foreground">
 							· checked {c.asOf.slice(0, 10)}</span
 						>{/if}
 					{#if c.reasons.length}<p class="mt-1 text-muted-foreground">
-							{c.reasons.join(' · ')}
+							{coverageText(c).details}
 						</p>{/if}
 				</li>
 			{/each}
@@ -730,7 +735,7 @@
 					<div class="rounded-lg border px-3 py-2">
 						<div class="flex flex-wrap items-baseline gap-2">
 							<span class="text-sm font-medium">{p.program}</span><span class="text-sm tabular-nums"
-								>{p.points.toLocaleString('en-US')} pts</span
+								>{formatUnits(p.points, controls.hideAmounts)} pts</span
 							><span class="text-xs text-muted-foreground"
 								>{p.estValue === null ? 'Value unavailable' : `≈ ${money(p.estValue)}`}</span
 							>

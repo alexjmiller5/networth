@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { formatMoney, formatMoneyTick } from '$lib/finance/display';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
 	import { colorForSlot, needsNet } from '$lib/finance/chartStyle';
 	import {
@@ -36,6 +37,7 @@
 	);
 
 	interface Props {
+		hideAmounts?: boolean;
 		data: StackedSeries;
 		bucket?: Bucket;
 		kind?: 'area' | 'bar' | 'line';
@@ -58,6 +60,7 @@
 	const {
 		data,
 		bucket = 'day',
+		hideAmounts = false,
 		kind = 'bar',
 		net = false,
 		legendKeys,
@@ -126,16 +129,8 @@
 		};
 	}
 
-	const money = (v: number): string =>
-		(v === 0 ? 0 : v).toLocaleString('en-US', {
-			style: 'currency',
-			currency: 'USD',
-			maximumFractionDigits: 2
-		});
-	const moneyTick = (v: number): string =>
-		Math.abs(v) >= 1000
-			? `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
-			: money(v);
+	const money = (v: number): string => formatMoney(v, hideAmounts);
+	const moneyTick = (v: number): string => formatMoneyTick(v, hideAmounts);
 
 	const tooltipTitle = (items: { dataIndex: number }[]): string => {
 		const raw = data.dates[items[0]?.dataIndex ?? -1];
@@ -331,6 +326,7 @@
 		void data;
 		void bucket;
 		void kind;
+		void hideAmounts;
 		render();
 	});
 </script>

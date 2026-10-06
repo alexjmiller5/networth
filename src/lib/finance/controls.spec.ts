@@ -523,3 +523,19 @@ it('allows hiding cash while keeping a verified closed zero visible in Overview'
 		'account-1'
 	]);
 });
+
+it('persists local amount concealment independently of filters and restores it before display', () => {
+	expect(restore().hideAmounts).toBe(false);
+	const c = state({ hideAmounts: true, accountStatuses: ['closed'] });
+	let saved = '';
+	writeControls(
+		{
+			setItem: (_key, value) => {
+				saved = value;
+			}
+		},
+		c
+	);
+	expect(restore(saved)).toMatchObject({ hideAmounts: true, accountStatuses: ['closed'] });
+	expect(restore('{"hideAmounts":"true"}').hideAmounts).toBe(false);
+});
