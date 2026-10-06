@@ -146,7 +146,9 @@ try {
   const originalFetch=window.fetch;
   window.fetch=async(input,options)=>{const path=new URL(typeof input==='string'?input:input.url,location.href).pathname;
    if(!path.startsWith('/api/'))return originalFetch(input,options);
-   if(path!=='/api/benefits'||(options?.method&&options.method!=='GET'))throw new Error('Synthetic test forbids other API calls');
+   if(options?.method&&options.method!=='GET')throw new Error('Synthetic test forbids writes');
+   if(path==='/api/finance')return Response.json({accounts:[],txns:[],categories:[],points:[],coverage:[]});
+   if(path!=='/api/benefits')throw new Error('Synthetic test forbids other API calls');
    if(window.__failRefresh)return new Response('unavailable',{status:503});
    return Response.json(window.__emptyBenefits?{plans:[]}:${JSON.stringify(fixture)});
   };`
@@ -207,6 +209,27 @@ try {
 	console.log(
 		'PASS: native metrics, zero/unavailable/suppressed, dates, history and persisted privacy'
 	);
+
+	await click('a[href="/"]');
+	await until("location.pathname==='/' && document.querySelector('[aria-label=\"View\"]')");
+	const beforeNavigation = await evaluate("JSON.parse(localStorage.getItem('networth-ui'))");
+	assert.equal(beforeNavigation.hideAmounts, true);
+	assert.equal(beforeNavigation.activePreset, 'ALL');
+	await until('document.querySelector(\'a[href="/benefits"]\')');
+	await click('a[href="/benefits"]');
+	await until(
+		"location.pathname==='/benefits' && document.querySelector('[aria-label=\"Show amounts\"]')"
+	);
+	assert.equal(await evaluate('/800.00|125.50|999.99/.test(document.body.innerText)'), false);
+	await click('a[href="/"]');
+	await until("location.pathname==='/' && document.querySelector('[aria-label=\"View\"]')");
+	assert.deepEqual(
+		await evaluate("JSON.parse(localStorage.getItem('networth-ui'))"),
+		beforeNavigation
+	);
+	await click('a[href="/benefits"]');
+	await until("document.querySelector('[data-benefits-ready]')");
+	console.log('PASS: trusted home/benefits navigation preserves filters and concealment');
 	await send('Emulation.setDeviceMetricsOverride', {
 		width: 390,
 		height: 844,
