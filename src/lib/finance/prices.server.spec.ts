@@ -27,7 +27,7 @@ describe('server price transport', () => {
 			);
 			expect(init).toMatchObject({
 				method: 'POST',
-				redirect: 'error',
+				redirect: 'manual',
 				credentials: 'omit',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }
 			});
@@ -56,7 +56,7 @@ describe('server price transport', () => {
 				datatype: 'json',
 				apikey: syntheticKey
 			});
-			expect(init).toMatchObject({ redirect: 'error', credentials: 'omit' });
+			expect(init).toMatchObject({ redirect: 'manual', credentials: 'omit' });
 			return Response.json({
 				'Meta Data': {
 					'2. Symbol': 'TEST.X',
@@ -95,6 +95,7 @@ describe('server price transport', () => {
 		() => Response.json({ Information: 'quota' }),
 		() => Response.json({ ...payload, fundNo: '654321' }),
 		() => Response.json(payload, { status: 429 }),
+		() => new Response(null, { status: 302, headers: { Location: 'https://other.example' } }),
 		() => new Response('<html>Login</html>', { headers: { 'Content-Type': 'text/html' } }),
 		() => new Response('not json', { headers: { 'Content-Type': 'application/json' } })
 	])('never mistakes transport or provider failures for prices', async (response) => {

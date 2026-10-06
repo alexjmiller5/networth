@@ -24,7 +24,7 @@ export async function fetchPriceHistory(
 		);
 	const url = new URL(PRICE_SOURCE_URLS[request.provider]);
 	const init: RequestInit = {
-		redirect: 'error',
+		redirect: 'manual',
 		credentials: 'omit',
 		headers: { Accept: 'application/json' },
 		signal: AbortSignal.timeout(10_000)
