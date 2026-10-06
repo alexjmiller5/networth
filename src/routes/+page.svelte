@@ -220,7 +220,9 @@
 					? 'Sum of the visible categorized amounts in this date range, using your shares and excluding internal transfers.'
 					: 'Sum of the visible verified transaction ledgers. Credit-card debt subtracts from the subtotal.'}
 			>
-				{!view.isFlow && !view.data.series.length ? 'Unavailable' : money(view.total)}
+				{!view.isFlow && !view.summary.some((row) => row.value !== null)
+					? 'Unavailable'
+					: money(view.total)}
 			</div>
 			<div class="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
 				{view.title}
