@@ -114,12 +114,8 @@ class CompanionTests(unittest.TestCase):
         self.client.flush_event("r")
         self.assertEqual(self.service.events, [original, original])
         self.service.snapshot["next_sequence"] = 8
-        next_event = self.client.queue_event(
-            "r", "review_observed", {"state": "pending"}
-        )
-        self.assertEqual(
-            (next_event["sequence"], next_event["expected_revision"]), (8, 11)
-        )
+        next_event = self.client.queue_event("r", "review_observed", {"state": "pending"})
+        self.assertEqual((next_event["sequence"], next_event["expected_revision"]), (8, 11))
         self.assertTrue(self.journal.get("r")["cancel_requested"])
 
     def test_mismatched_ack_keeps_original_pending(self):
@@ -154,10 +150,7 @@ class CompanionTests(unittest.TestCase):
         self.assertEqual(event["payload"]["transport"], "unavailable")
         self.assertIsNone(event["payload"]["conversation"])
         self.assertTrue(
-            all(
-                x["state"] == "unavailable"
-                for x in event["payload"]["readiness"].values()
-            )
+            all(x["state"] == "unavailable" for x in event["payload"]["readiness"].values())
         )
         self.assertEqual(self.journal.get("r")["operations"], [])
         self.assertFalse(self.journal.get("r")["instruction_attempted"])

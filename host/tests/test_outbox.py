@@ -25,18 +25,14 @@ class OutboxTests(unittest.TestCase):
             second.retain("run-1/events", "e7", payload | {"expected_revision": 11})
 
     def test_definitive_rejection_unblocks_next_event_and_late_ack_is_idempotent(self):
-        self.journal.retain(
-            "run-1/events", "e7", {"sequence": 7, "expected_revision": 10}
-        )
+        self.journal.retain("run-1/events", "e7", {"sequence": 7, "expected_revision": 10})
         decision = {
             "outcome": "rejected_not_applied",
             "consumed_sequence": 7,
             "revision": 11,
         }
         self.journal.acknowledge("run-1/events", "e7", decision)
-        self.journal.retain(
-            "run-1/events", "e8", {"sequence": 8, "expected_revision": 11}
-        )
+        self.journal.retain("run-1/events", "e8", {"sequence": 8, "expected_revision": 11})
         self.journal.acknowledge("run-1/events", "e7", decision)
         self.assertEqual(
             self.journal.pending("run-1/events"),

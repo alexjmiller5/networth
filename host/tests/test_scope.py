@@ -27,9 +27,7 @@ class ScopeTests(unittest.TestCase):
 
     def test_missing_stored_account_binding_is_not_safe_to_update(self):
         with self.assertRaises(ScopeError):
-            preflight_batch(
-                {"a"}, [{"id": "raw-1", "account_id": "a"}], {"raw-1": {"id": "raw-1"}}
-            )
+            preflight_batch({"a"}, [{"id": "raw-1", "account_id": "a"}], {"raw-1": {"id": "raw-1"}})
 
     def test_duplicate_source_ids_reject_before_first_mutation(self):
         row = {"id": "raw-1", "account_id": "a"}
@@ -49,20 +47,26 @@ class ScopeTests(unittest.TestCase):
             "host_id": "h",
             "lease_generation": "g",
             "account_ids": ["a"],
+            "start_instruction_id": "instruction-1",
         }
         good = expected | {
-            "cancel_requested": False,
+            "cancellation": "none",
             "capture_closed": False,
-            "scope_eligible": True,
+            "eligibility": {"state": "eligible"},
+            "reservation": "held",
+            "collection": "running",
         }
         validate_control(expected, good)
         for changes in (
-            {"cancel_requested": True},
+            {"cancellation": "requested"},
             {"capture_closed": True},
             {"lease_generation": "old"},
             {"account_ids": ["a", "b"]},
-            {"scope_eligible": False},
+            {"eligibility": {"state": "drifted"}},
             {"host_id": "foreign"},
+            {"reservation": "released"},
+            {"collection": "not_started"},
+            {"start_instruction_id": "other-instruction"},
         ):
             with self.subTest(changes=changes), self.assertRaises(ScopeError):
                 validate_control(expected, good | changes)

@@ -93,9 +93,7 @@ class JournalTests(unittest.TestCase):
         self.journal.resolve_operation("run-1", "op-1", "not_applied", {})
         self.journal.resolve_operation("run-1", "op-1", "not_applied", {})
         with self.assertRaises(Conflict):
-            self.journal.resolve_operation(
-                "run-1", "op-1", "applied", {"tab_id": "tab-2"}
-            )
+            self.journal.resolve_operation("run-1", "op-1", "applied", {"tab_id": "tab-2"})
 
     def test_second_process_respects_existing_domain(self):
         second = Journal(self.path)

@@ -82,11 +82,7 @@ class Transport:
         return self._request("GET", "runs/" + quote(run_id, safe="") + "/control")
 
     def event(self, run_id, event):
-        return self._request(
-            "POST", "runs/" + quote(run_id, safe="") + "/events", event
-        )
+        return self._request("POST", "runs/" + quote(run_id, safe="") + "/events", event)
 
     def start(self, run_id, request):
-        return self._request(
-            "POST", "runs/" + quote(run_id, safe="") + "/start", request
-        )
+        return self._request("POST", "runs/" + quote(run_id, safe="") + "/start", request)

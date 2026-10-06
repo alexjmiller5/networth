@@ -57,9 +57,7 @@ class Journal:
     def active(self):
         return [
             json.loads(row[0])
-            for row in self.db.execute(
-                "SELECT state FROM runs WHERE closed=0 ORDER BY id"
-            )
+            for row in self.db.execute("SELECT state FROM runs WHERE closed=0 ORDER BY id")
         ]
 
     @contextmanager
@@ -100,9 +98,7 @@ class Journal:
                 raise Conflict("missing claim identity")
         for key in ("account_ids", "tracking_task_ids"):
             ids = claim[key]
-            if not isinstance(ids, list) or not all(
-                isinstance(i, str) and i.strip() for i in ids
-            ):
+            if not isinstance(ids, list) or not all(isinstance(i, str) and i.strip() for i in ids):
                 raise Conflict("invalid scope")
             if len(set(ids)) != len(ids) or (key == "account_ids" and not ids):
                 raise Conflict("invalid scope")
@@ -141,18 +137,12 @@ class Journal:
             raise Conflict("capture stopped")
 
     def begin_operation(self, run_id, kind, operation_id):
-        if (
-            kind not in {"tab_create", "agent_start", "collection_prompt"}
-            or not operation_id
-        ):
+        if kind not in {"tab_create", "agent_start", "collection_prompt"} or not operation_id:
             raise Conflict("invalid operation")
         with self.transaction():
             state = self.get(run_id)
             self._open(state)
-            if any(
-                o["decision"] is None or o["id"] == operation_id
-                for o in state["operations"]
-            ):
+            if any(o["decision"] is None or o["id"] == operation_id for o in state["operations"]):
                 raise Conflict("operation requires reconciliation")
             if state["instruction_attempted"]:
                 raise Conflict("collection instruction already attempted")
@@ -206,18 +196,13 @@ class Journal:
         with self.transaction():
             state = self.get(run_id)
             self._open(state)
-            if (
-                reason not in {"unavailable", "out_of_credits"}
-                or state["provider"] != "claude"
-            ):
+            if reason not in {"unavailable", "out_of_credits"} or state["provider"] != "claude":
                 raise Conflict("provider fallback not allowed")
             if state["instruction_attempted"] or any(
                 o["decision"] is None for o in state["operations"]
             ):
                 raise Conflict("ambiguous launch must be reconciled")
-            applied = any(
-                o["decision"]["outcome"] == "applied" for o in state["operations"]
-            )
+            applied = any(o["decision"]["outcome"] == "applied" for o in state["operations"])
             if applied and state["quiescence"] is None:
                 raise Conflict("partial session must be quiescent first")
             state["provider"] = "codex"
@@ -285,9 +270,7 @@ class Journal:
         if type(wait_seconds) is not int or not 0 <= wait_seconds <= 25:
             raise Conflict("invalid poll duration")
         with self.transaction():
-            old = self.db.execute(
-                "SELECT payload FROM poll WHERE singleton=1"
-            ).fetchone()
+            old = self.db.execute("SELECT payload FROM poll WHERE singleton=1").fetchone()
             if old:
                 return json.loads(old[0])
             request = {"request_id": str(uuid.uuid4()), "wait_seconds": wait_seconds}
@@ -297,9 +280,7 @@ class Journal:
     def complete_poll(self, request_id):
         """Only after validating and durably recording the response/claim."""
         with self.transaction():
-            old = self.db.execute(
-                "SELECT payload FROM poll WHERE singleton=1"
-            ).fetchone()
+            old = self.db.execute("SELECT payload FROM poll WHERE singleton=1").fetchone()
             if old is None or json.loads(old[0])["request_id"] != request_id:
                 raise Conflict("unknown poll")
             self.db.execute("DELETE FROM poll WHERE singleton=1")

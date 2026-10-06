@@ -42,9 +42,7 @@ class TransportTests(unittest.TestCase):
             )
             return Response(b'{"claim":null}')
 
-        client = Transport(
-            "https://example.test", lambda: "synthetic-token", opener=opener
-        )
+        client = Transport("https://example.test", lambda: "synthetic-token", opener=opener)
         result = client.claim({"request_id": "poll-1", "wait_seconds": 25})
         self.assertEqual(result, {"claim": None})
         self.assertEqual(
@@ -67,15 +65,11 @@ class TransportTests(unittest.TestCase):
             urls.append(request.full_url)
             return Response(b"{}")
 
-        client = Transport(
-            "https://example.test", lambda: "synthetic-token", opener=opener
-        )
+        client = Transport("https://example.test", lambda: "synthetic-token", opener=opener)
         client.control("../other?token=x")
         self.assertEqual(
             urls,
-            [
-                "https://example.test/api/finance-host/v1/runs/..%2Fother%3Ftoken%3Dx/control"
-            ],
+            ["https://example.test/api/finance-host/v1/runs/..%2Fother%3Ftoken%3Dx/control"],
         )
 
     def test_redirect_error_does_not_retry_or_echo_token_or_response(self):
@@ -91,9 +85,7 @@ class TransportTests(unittest.TestCase):
                 io.BytesIO(b"secret body"),
             )
 
-        client = Transport(
-            "https://example.test", lambda: "synthetic-token", opener=opener
-        )
+        client = Transport("https://example.test", lambda: "synthetic-token", opener=opener)
         with self.assertRaises(TransportError) as error:
             client.claim({"request_id": "poll-1", "wait_seconds": 25})
         self.assertEqual(str(error.exception), "host service returned HTTP 302")
@@ -116,9 +108,7 @@ class TransportTests(unittest.TestCase):
             calls.append(request.full_url)
             raise TimeoutError()
 
-        client = Transport(
-            "https://example.test", lambda: "synthetic-token", opener=opener
-        )
+        client = Transport("https://example.test", lambda: "synthetic-token", opener=opener)
         with self.assertRaises(TransportError):
             client.start("run-1", {"instruction_id": "i1"})
         self.assertEqual(len(calls), 1)

@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from networth_host.wire import (
     ProtocolError,
@@ -10,6 +12,13 @@ from networth_host.wire import (
 
 
 class WireTests(unittest.TestCase):
+    def test_pinned_typescript_contract_golden_vectors(self):
+        vectors = json.loads(Path(__file__).with_name("run-contract.golden.json").read_text())
+        for vector in vectors:
+            with self.subTest(name=vector["name"]):
+                self.assertEqual(canonical_request(vector["request"]), vector["canonical"])
+                self.assertEqual(digest(vector["request"]), vector["sha256"])
+
     def test_max_safe_integer_and_unicode_match_canonical_owner_vector(self):
         request = {
             "instruction_id": "instruction-β",

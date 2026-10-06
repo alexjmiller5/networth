@@ -112,11 +112,7 @@ BINDING_KEYS = CLAIM_KEYS - {"revision", "cancellation", "capture_closed"}
 
 
 def claim_binding(claim, host_id):
-    if (
-        not isinstance(claim, dict)
-        or set(claim) != CLAIM_KEYS
-        or claim["host_id"] != host_id
-    ):
+    if not isinstance(claim, dict) or set(claim) != CLAIM_KEYS or claim["host_id"] != host_id:
         raise ProtocolError("invalid or foreign host claim")
     for key in ("run_id", "host_id", "domain_id", "lease_generation"):
         identifier(claim[key])

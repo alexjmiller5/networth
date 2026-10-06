@@ -12,16 +12,19 @@ class ScopeError(ValueError):
 
 
 def validate_control(expected, control):
-    for key in ("run_id", "host_id", "lease_generation"):
+    for key in ("run_id", "host_id", "lease_generation", "start_instruction_id"):
         if not expected.get(key) or control.get(key) != expected[key]:
             raise ScopeError("control identity changed")
     actual = control.get("account_ids")
     if not isinstance(actual, list) or actual != expected["account_ids"]:
         raise ScopeError("control scope changed")
     if (
-        control.get("cancel_requested") is not False
+        control.get("cancellation") != "none"
         or control.get("capture_closed") is not False
-        or control.get("scope_eligible") is not True
+        or not isinstance(control.get("eligibility"), dict)
+        or control["eligibility"].get("state") != "eligible"
+        or control.get("reservation") != "held"
+        or control.get("collection") != "running"
     ):
         raise ScopeError("collection control does not permit another operation")
 
@@ -42,9 +45,7 @@ def preflight_batch(allowed_accounts, incoming, existing):
         if not isinstance(account_id, str) or account_id not in allowed_accounts:
             raise ScopeError("incoming row is outside the frozen account scope")
         old = existing.get(row_id)
-        if old is not None and (
-            old.get("id") != row_id or old.get("account_id") != account_id
-        ):
+        if old is not None and (old.get("id") != row_id or old.get("account_id") != account_id):
             raise ScopeError("stored target belongs to another or unknown account")
         seen.add(row_id)
         bindings.append((row_id, account_id))

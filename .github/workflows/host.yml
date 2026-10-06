@@ -1,0 +1,19 @@
+name: Host companion
+on:
+  pull_request:
+    paths: ['host/**', 'src/lib/finance/run-contract*', '.github/workflows/host.yml']
+  push:
+    branches: ['feat/finance-host']
+    paths: ['host/**', 'src/lib/finance/run-contract*', '.github/workflows/host.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - run: PYTHONPATH=host uv run --no-project python -m unittest discover -s host/tests
+      - run: uv run --no-project --with ruff ruff check host
+      - run: uv run --no-project --with ruff ruff format --check host
+      - run: uv build host

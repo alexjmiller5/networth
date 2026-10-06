@@ -66,10 +66,7 @@ class Companion:
             "review_observed",
         }:
             raise ProtocolError("unknown event kind")
-        if (
-            kind == "account_observed"
-            and payload.get("account_id") not in current["account_ids"]
-        ):
+        if kind == "account_observed" and payload.get("account_id") not in current["account_ids"]:
             raise ProtocolError("account event outside frozen scope")
         event = {
             "event_id": str(uuid.uuid4()),
