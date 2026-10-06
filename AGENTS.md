@@ -6,7 +6,8 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
+- `/api/finance` and `/api/benefits` are the data paths. `LIFE_HUB_URL` is
+  server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
@@ -43,6 +44,11 @@ protects the site and every API route.
   A closed investment with independently verified zero cash and flat positions
   may show current zero in Overview at/after that checkpoint. Its historical
   market values remain unavailable; never backfill the chart with zeroes.
+- `/benefits` reads provider-native plans and observations separately from cash
+  and net worth. Keep metrics independent and nullable; suppressed vested amounts
+  stay null. Group by plan/year, order source date before capture time, and never
+  publish raw evidence references. Reuse device-local amount concealment, including
+  eligibility prose, without resetting other controls. See `docs/benefits.md`.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
