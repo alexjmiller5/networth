@@ -32,7 +32,7 @@ it('reads only fixed tables and columns with the existing server credential and 
 		expect(init?.headers).toMatchObject({ authorization: 'Bearer synthetic-token' });
 		const body = JSON.parse(String(init?.body));
 		bodies.push(body);
-		expect(body.limit).toBe(200);
+		expect(body.limit).toBe(body.after ? 200 : undefined);
 		expect(body.since).toBe('');
 		return Response.json({
 			rows:

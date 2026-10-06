@@ -14,7 +14,9 @@ protects the site and every API route.
   enabled for the public URL read path. Local runtime tests cannot prove
   Cloudflare's production routing; verify an authenticated API response
   after deploying.
-  Pull every `next_cursor` page before assembly, sending the opaque cursor as
+  Start with the supported complete-table pull (omit `limit`) to avoid serial
+  small-page latency on cold loads. Pull every returned `next_cursor` page before
+  assembly with `limit: 200`, sending the opaque cursor as
   `after` to the same configured destination with the same table/column list.
   Missing/null cursors end a pull (including legacy complete responses).
   Continuing pages must be nonempty with a strictly advancing string cursor;
