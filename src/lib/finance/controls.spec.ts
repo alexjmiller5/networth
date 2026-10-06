@@ -539,3 +539,24 @@ it('persists local amount concealment independently of filters and restores it b
 	expect(restore(saved)).toMatchObject({ hideAmounts: true, accountStatuses: ['closed'] });
 	expect(restore('{"hideAmounts":"true"}').hideAmounts).toBe(false);
 });
+
+describe('initial date horizon', () => {
+	it('starts at 90 days while retaining an explicit saved longer preset', () => {
+		const fresh = readControls(undefined, '2020-01-01', '2026-10-06');
+		expect([fresh.activePreset, fresh.dateStart, fresh.dateEnd]).toEqual([
+			'90D',
+			'2026-07-09',
+			'2026-10-06'
+		]);
+		const saved = readControls(
+			{ getItem: () => JSON.stringify({ activePreset: 'ALL', bucket: 'month' }) },
+			'2020-01-01',
+			'2026-10-06'
+		);
+		expect([saved.activePreset, saved.dateStart, saved.bucket]).toEqual([
+			'ALL',
+			'2020-01-01',
+			'month'
+		]);
+	});
+});

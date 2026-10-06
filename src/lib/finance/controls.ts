@@ -79,7 +79,7 @@ export function readControls(
 		/* Storage may be disabled. */
 	}
 	const groupBy = choice(saved.groupBy, GROUPS, 'account');
-	const activePreset = choice(saved.activePreset, [...PRESET_LABELS, ''], '1Y');
+	const activePreset = choice(saved.activePreset, [...PRESET_LABELS, ''], '90D');
 	const custom = activePreset === '';
 	const range = custom
 		? clampRange(saved.dateStart, saved.dateEnd, min, max)

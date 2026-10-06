@@ -1,10 +1,13 @@
 <script lang="ts">
-	// Dual-handle date range slider, ported from notion-task-burndown-chart:
-	// drag either handle, drag the filled range to slide the whole window, or
-	// click the track to jump the nearest handle. Touch gets bigger targets.
-	// Restyled from that app's palette to this one's theme tokens.
-	import { onMount, onDestroy } from 'svelte';
-	import { addDays } from '$lib/finance/presets';
+	import { onDestroy, untrack } from 'svelte';
+	import {
+		dateViewport,
+		dayNumber,
+		dateString,
+		panViewport,
+		moveSelection,
+		type DateWindow
+	} from '$lib/finance/date-viewport';
 
 	interface Props {
 		min: string;
@@ -13,319 +16,238 @@
 		end: string;
 		onchange: (start: string, end: string) => void;
 	}
-
 	let { min, max, start, end, onchange }: Props = $props();
-
+	let viewport = $state<DateWindow>({ start: '', end: '' });
 	let track: HTMLDivElement;
-	let dragging: 'start' | 'end' | 'range' | null = $state(null);
-	let hovered: 'start' | 'end' | 'range' | 'track' | null = $state(null);
-	let isTouch = $state(false);
+	let dragging = $state<'start' | 'end' | 'range' | null>(null);
+	let lastSelection = '';
 	let didDrag = false;
-	let dragStartX = 0;
-	let dragStartVal = 0;
-	let dragEndVal = 0;
+	let originX = 0;
+	let pointerX = 0;
+	let originView = 0;
+	let originSelection: DateWindow;
+	let frame = 0;
+	let lastPan = 0;
+	let lastBounds = '';
+	const span = $derived(viewport.start ? dayNumber(viewport.end) - dayNumber(viewport.start) : 0);
+	const percent = (date: string): number =>
+		span
+			? Math.max(0, Math.min(100, ((dayNumber(date) - dayNumber(viewport.start)) / span) * 100))
+			: 50;
+	const label = (date: string): string =>
+		new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			timeZone: 'UTC'
+		});
 
-	let touchMql: MediaQueryList | null = null;
-	function syncIsTouch(e: MediaQueryListEvent | MediaQueryList): void {
-		isTouch = 'matches' in e ? e.matches : false;
-	}
-
-	onMount(() => {
-		if (typeof window === 'undefined' || !window.matchMedia) return;
-		touchMql = window.matchMedia('(pointer: coarse)');
-		isTouch = touchMql.matches;
-		touchMql.addEventListener('change', syncIsTouch);
+	$effect(() => {
+		const selection = `${start}|${end}`;
+		const bounds = `${min}|${max}`;
+		untrack(() => {
+			if (selection !== lastSelection || bounds !== lastBounds)
+				viewport = dateViewport(min, max, end);
+			lastSelection = selection;
+			lastBounds = bounds;
+		});
 	});
 
-	onDestroy(() => {
-		touchMql?.removeEventListener('change', syncIsTouch);
-		handlePointerUp();
-	});
-
-	function dateToOffset(date: string): number {
-		return Math.round((Date.parse(date) - Date.parse(min)) / 86400000);
+	function emit(selection: DateWindow) {
+		lastSelection = `${selection.start}|${selection.end}`;
+		if (selection.start !== start || selection.end !== end)
+			onchange(selection.start, selection.end);
+		return selection;
 	}
-
-	function offsetToDate(offset: number): string {
-		return addDays(min, offset);
+	function pan(days: number) {
+		viewport = panViewport(viewport, days, min, max);
 	}
-
-	let totalDays = $derived(dateToOffset(max));
-	let startOffset = $derived(dateToOffset(start));
-	let endOffset = $derived(dateToOffset(end));
-
-	let startPct = $derived(totalDays > 0 ? (startOffset / totalDays) * 100 : 0);
-	let endPct = $derived(totalDays > 0 ? (endOffset / totalDays) * 100 : 100);
-
-	const MONTHS = [
-		'Jan',
-		'Feb',
-		'Mar',
-		'Apr',
-		'May',
-		'Jun',
-		'Jul',
-		'Aug',
-		'Sep',
-		'Oct',
-		'Nov',
-		'Dec'
-	];
-	function formatLabel(date: string): string {
-		const d = new Date(date + 'T00:00:00');
-		return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+	function adjust(type: 'start' | 'end', day: number) {
+		if (type === 'start')
+			return emit({
+				start: dateString(Math.max(dayNumber(min), Math.min(dayNumber(end), day))),
+				end
+			});
+		else
+			return emit({
+				start,
+				end: dateString(Math.min(dayNumber(max), Math.max(dayNumber(start), day)))
+			});
 	}
-
-	function xToOffset(clientX: number): number {
-		if (!track) return 0;
-		const rect = track.getBoundingClientRect();
-		const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-		return Math.round(pct * totalDays);
+	function keydown(event: KeyboardEvent, type: 'start' | 'end' | 'range') {
+		const delta = (
+			{
+				ArrowLeft: -1,
+				ArrowDown: -1,
+				ArrowRight: 1,
+				ArrowUp: 1,
+				PageDown: -30,
+				PageUp: 30
+			} as Record<string, number>
+		)[event.key];
+		if (delta === undefined && event.key !== 'Home' && event.key !== 'End') return;
+		event.preventDefault();
+		const current = dayNumber(type === 'end' ? end : start);
+		const target =
+			event.key === 'Home'
+				? dayNumber(min)
+				: event.key === 'End'
+					? dayNumber(max)
+					: current + delta * (event.shiftKey ? 7 : 1);
+		const moved =
+			type === 'range'
+				? emit(moveSelection({ start, end }, target - current, min, max))
+				: adjust(type, target);
+		const anchor = moved[type === 'range' ? (target < current ? 'start' : 'end') : type];
+		if (anchor < viewport.start) pan(dayNumber(anchor) - dayNumber(viewport.start));
+		if (anchor > viewport.end) pan(dayNumber(anchor) - dayNumber(viewport.end));
 	}
-
-	function handlePointerDown(e: PointerEvent, type: 'start' | 'end' | 'range'): void {
-		e.preventDefault();
-		e.stopPropagation();
+	function updateDrag() {
+		if (!dragging || !track) return;
+		const shift =
+			Math.round(((pointerX - originX) / track.getBoundingClientRect().width) * span) +
+			dayNumber(viewport.start) -
+			originView;
+		if (dragging === 'range') emit(moveSelection(originSelection, shift, min, max));
+		else adjust(dragging, dayNumber(originSelection[dragging]) + shift);
+	}
+	function edgePan(time: number) {
+		if (!dragging) return;
+		if (didDrag && time - lastPan >= 80) {
+			const rect = track.getBoundingClientRect();
+			const direction = pointerX <= rect.left + 24 ? -1 : pointerX >= rect.right - 24 ? 1 : 0;
+			if (direction) {
+				pan(direction);
+				updateDrag();
+			}
+			lastPan = time;
+		}
+		frame = requestAnimationFrame(edgePan);
+	}
+	function pointerDown(event: PointerEvent, type: 'start' | 'end' | 'range') {
+		(event.currentTarget as HTMLElement).focus();
+		event.preventDefault();
+		event.stopPropagation();
 		dragging = type;
 		didDrag = false;
-		dragStartX = e.clientX;
-		dragStartVal = startOffset;
-		dragEndVal = endOffset;
-		(e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-		window.addEventListener('pointermove', handlePointerMove);
-		window.addEventListener('pointerup', handlePointerUp);
+		originX = pointerX = event.clientX;
+		originView = dayNumber(viewport.start);
+		// A clipped handle begins from its visible edge, keeping pointer movement local.
+		originSelection = { start, end };
+		if (type !== 'range')
+			originSelection[type] = dateString(
+				Math.max(originView, Math.min(dayNumber(viewport.end), dayNumber(originSelection[type])))
+			);
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		window.addEventListener('pointermove', pointerMove);
+		window.addEventListener('pointerup', pointerUp);
+		window.addEventListener('pointercancel', pointerUp);
+		frame = requestAnimationFrame(edgePan);
 	}
-
-	function handlePointerMove(e: PointerEvent): void {
-		if (!dragging || !track) return;
+	function pointerMove(event: PointerEvent) {
+		pointerX = event.clientX;
+		if (Math.abs(pointerX - originX) < 2 && !didDrag) return;
 		didDrag = true;
-		const rect = track.getBoundingClientRect();
-		const deltaPx = e.clientX - dragStartX;
-		const deltaDays = Math.round((deltaPx / rect.width) * totalDays);
-
-		if (dragging === 'start') {
-			const newStart = Math.max(0, Math.min(endOffset, dragStartVal + deltaDays));
-			onchange(offsetToDate(newStart), end);
-		} else if (dragging === 'end') {
-			const newEnd = Math.max(startOffset, Math.min(totalDays, dragEndVal + deltaDays));
-			onchange(start, offsetToDate(newEnd));
-		} else if (dragging === 'range') {
-			const rangeSize = dragEndVal - dragStartVal;
-			let newStart = dragStartVal + deltaDays;
-			let newEnd = dragEndVal + deltaDays;
-			if (newStart < 0) {
-				newStart = 0;
-				newEnd = rangeSize;
-			}
-			if (newEnd > totalDays) {
-				newEnd = totalDays;
-				newStart = totalDays - rangeSize;
-			}
-			onchange(offsetToDate(newStart), offsetToDate(newEnd));
-		}
+		updateDrag();
 	}
-
-	function handlePointerUp(): void {
+	function pointerUp() {
+		if (typeof window === 'undefined') return;
 		dragging = null;
-		window.removeEventListener('pointermove', handlePointerMove);
-		window.removeEventListener('pointerup', handlePointerUp);
+		cancelAnimationFrame(frame);
+		window.removeEventListener('pointermove', pointerMove);
+		window.removeEventListener('pointerup', pointerUp);
+		window.removeEventListener('pointercancel', pointerUp);
 	}
-
-	function handleTrackClick(e: MouseEvent): void {
-		if (dragging || didDrag) {
+	onDestroy(pointerUp);
+	function trackClick(event: MouseEvent) {
+		if (didDrag) {
 			didDrag = false;
 			return;
 		}
-		const offset = xToOffset(e.clientX);
-		const distToStart = Math.abs(offset - startOffset);
-		const distToEnd = Math.abs(offset - endOffset);
-		if (distToStart < distToEnd) {
-			onchange(offsetToDate(Math.min(offset, endOffset)), end);
-		} else {
-			onchange(start, offsetToDate(Math.max(offset, startOffset)));
-		}
+		if (event.target !== track) return;
+		const rect = track.getBoundingClientRect();
+		const day =
+			dayNumber(viewport.start) +
+			Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * span);
+		adjust(
+			Math.abs(day - dayNumber(start)) < Math.abs(day - dayNumber(end)) ? 'start' : 'end',
+			day
+		);
 	}
-
-	function handleKey(e: KeyboardEvent, handle: 'start' | 'end'): void {
-		const current = handle === 'start' ? startOffset : endOffset;
-		const lower = handle === 'start' ? 0 : startOffset;
-		const upper = handle === 'start' ? endOffset : totalDays;
-		const steps: Record<string, number> = {
-			ArrowLeft: -1,
-			ArrowDown: -1,
-			ArrowRight: 1,
-			ArrowUp: 1,
-			PageDown: -7,
-			PageUp: 7
-		};
-		const next =
-			e.key === 'Home'
-				? lower
-				: e.key === 'End'
-					? upper
-					: e.key in steps
-						? current + steps[e.key]
-						: null;
-		if (next === null) return;
-		e.preventDefault();
-		e.stopPropagation();
-		const value = offsetToDate(Math.max(lower, Math.min(upper, next)));
-		if (handle === 'start') onchange(value, end);
-		else onchange(start, value);
-	}
-
-	// Handle sizes scale up on touch so the hit area is closer to 44×44
-	function handleSize(type: 'start' | 'end'): number {
-		if (isTouch) {
-			if (dragging === type) return 28;
-			if (hovered === type) return 26;
-			return 24;
-		}
-		if (dragging === type) return 20;
-		if (hovered === type) return 18;
-		return 14;
-	}
-
-	function rangeHeight(): number {
-		if (isTouch) {
-			if (dragging === 'range') return 12;
-			if (hovered === 'range') return 10;
-			return 8;
-		}
-		if (dragging === 'range') return 10;
-		if (hovered === 'range') return 8;
-		return 6;
-	}
-
-	let trackHeight = $derived(isTouch ? 48 : 40);
-	let trackCenter = $derived(trackHeight / 2);
 </script>
 
 <div class="space-y-1">
-	<!-- Selected range labels -->
-	<div
-		class="flex justify-between text-[11px] tabular-nums transition-colors duration-150 {dragging
-			? 'text-primary'
-			: 'text-muted-foreground'}"
-	>
-		<span>{formatLabel(start)}</span>
-		<span>{formatLabel(end)}</span>
+	<div class="flex justify-between text-xs text-muted-foreground tabular-nums">
+		<span>{label(start)}</span><span>{label(end)}</span>
 	</div>
-
-	<!-- Slider track -->
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		bind:this={track}
-		class="relative cursor-pointer rounded-md transition-colors duration-150 select-none {hovered ||
-		dragging
-			? 'bg-accent'
-			: 'bg-transparent'}"
-		style="height: {trackHeight}px;"
-		onclick={handleTrackClick}
-		onmouseenter={() => {
-			if (!dragging) hovered = 'track';
-		}}
-		onmouseleave={() => {
-			if (!dragging) hovered = null;
-		}}
-	>
-		<!-- Background track line -->
+	<div bind:this={track} class="relative mx-5 h-12 touch-none select-none" onclick={trackClick}>
 		<div
-			class="absolute right-2 left-2 h-[6px] rounded-full bg-secondary"
-			style="top: {trackCenter - 3}px;"
+			class="pointer-events-none absolute top-[21px] h-1.5 w-full rounded-full bg-secondary"
 		></div>
-
-		<!-- Tick marks for month boundaries -->
-		{#if totalDays > 0}
-			{#each Array.from({ length: Math.ceil(totalDays / 30) }, (_, i) => i * 30) as tickOffset (tickOffset)}
-				{#if tickOffset > 0 && tickOffset < totalDays}
-					<div
-						class="absolute h-[8px] w-px bg-border"
-						style="left: {(tickOffset / totalDays) * 100}%; top: {trackCenter - 4}px;"
-					></div>
-				{/if}
+		{#if viewport.start}
+			{#each [30, 60] as tick}
+				{#if tick < span}<div
+						class="pointer-events-none absolute top-5 h-2 w-px bg-border"
+						style:left={`${(tick / span) * 100}%`}
+					></div>{/if}
+			{/each}
+			<button
+				type="button"
+				aria-label="Move selected date range"
+				class="absolute top-0 h-12 min-w-1 cursor-grab touch-none focus-visible:outline-2 focus-visible:outline-primary"
+				style:left={`${percent(start)}%`}
+				style:width={`${percent(end) - percent(start)}%`}
+				onpointerdown={(e) => pointerDown(e, 'range')}
+				onkeydown={(e) => keydown(e, 'range')}
+			>
+				<span
+					class="pointer-events-none absolute inset-x-0 top-[21px] h-1.5 rounded-full bg-primary"
+				></span>
+			</button>
+			{#each ['start', 'end'] as type}
+				{@const bound = type as 'start' | 'end'}
+				<button
+					type="button"
+					role="slider"
+					aria-label={bound === 'start' ? 'Start date' : 'End date'}
+					aria-valuemin={dayNumber(bound === 'start' ? min : start)}
+					aria-valuemax={dayNumber(bound === 'start' ? end : max)}
+					aria-valuenow={dayNumber(bound === 'start' ? start : end)}
+					aria-valuetext={label(bound === 'start' ? start : end)}
+					class="absolute top-0 z-10 flex h-12 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-primary"
+					style:left={`${percent(bound === 'start' ? start : end)}%`}
+					onpointerdown={(e) => pointerDown(e, bound)}
+					onkeydown={(e) => keydown(e, bound)}
+				>
+					<span
+						class="pointer-events-none h-4 w-4 rounded-full border-2 border-primary bg-background"
+					></span>
+				</button>
 			{/each}
 		{/if}
-
-		<!-- Selected range fill -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="absolute cursor-grab rounded-full bg-primary transition-all duration-100 active:cursor-grabbing"
-			style="
-        left: {startPct}%;
-        right: {100 - endPct}%;
-        top: {trackCenter - rangeHeight() / 2}px;
-        height: {rangeHeight()}px;
-      "
-			onpointerdown={(e) => handlePointerDown(e, 'range')}
-			onmouseenter={() => {
-				if (!dragging) hovered = 'range';
-			}}
-			onmouseleave={() => {
-				if (!dragging) hovered = null;
-			}}
-			role="presentation"
-		></div>
-
-		<!-- Start handle -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="absolute z-10 cursor-ew-resize rounded-full border-2 border-primary bg-background shadow-sm transition-all duration-100"
-			style="
-        left: calc({startPct}% - {handleSize('start') / 2}px);
-        top: {trackCenter - handleSize('start') / 2}px;
-        width: {handleSize('start')}px;
-        height: {handleSize('start')}px;
-      "
-			onpointerdown={(e) => handlePointerDown(e, 'start')}
-			onkeydown={(e) => handleKey(e, 'start')}
-			onmouseenter={() => {
-				if (!dragging) hovered = 'start';
-			}}
-			onmouseleave={() => {
-				if (!dragging) hovered = null;
-			}}
-			role="slider"
-			tabindex="0"
-			aria-label="Start date"
-			aria-valuemin={0}
-			aria-valuemax={endOffset}
-			aria-valuenow={startOffset}
-			aria-valuetext={formatLabel(start)}
-		></div>
-
-		<!-- End handle -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="absolute z-10 cursor-ew-resize rounded-full border-2 border-primary bg-background shadow-sm transition-all duration-100"
-			style="
-        left: calc({endPct}% - {handleSize('end') / 2}px);
-        top: {trackCenter - handleSize('end') / 2}px;
-        width: {handleSize('end')}px;
-        height: {handleSize('end')}px;
-      "
-			onpointerdown={(e) => handlePointerDown(e, 'end')}
-			onkeydown={(e) => handleKey(e, 'end')}
-			onmouseenter={() => {
-				if (!dragging) hovered = 'end';
-			}}
-			onmouseleave={() => {
-				if (!dragging) hovered = null;
-			}}
-			role="slider"
-			tabindex="0"
-			aria-label="End date"
-			aria-valuemin={startOffset}
-			aria-valuemax={totalDays}
-			aria-valuenow={endOffset}
-			aria-valuetext={formatLabel(end)}
-		></div>
 	</div>
-
-	<!-- Absolute data bounds -->
-	<div class="flex justify-between text-[10px] text-muted-foreground/50 tabular-nums">
-		<span>{formatLabel(min)}</span>
-		<span>{formatLabel(max)}</span>
-	</div>
+	<nav
+		aria-label="Date viewport"
+		class="flex flex-wrap items-center justify-between gap-1 text-xs text-muted-foreground tabular-nums"
+	>
+		<button
+			type="button"
+			class="min-h-9 rounded-md border px-2 disabled:opacity-40"
+			aria-label="Show earlier dates"
+			disabled={viewport.start <= min}
+			onclick={() => pan(-30)}>Earlier</button
+		>
+		<span aria-live="polite"
+			>{viewport.start ? `${label(viewport.start)} - ${label(viewport.end)}` : ''}</span
+		>
+		<button
+			type="button"
+			class="min-h-9 rounded-md border px-2 disabled:opacity-40"
+			aria-label="Show later dates"
+			disabled={viewport.end >= max}
+			onclick={() => pan(30)}>Later</button
+		>
+	</nav>
 </div>
