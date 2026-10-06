@@ -46,6 +46,11 @@ protects the site and every API route.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
+- `refundable-principal.ts` computes noncash principal from complete normalized
+  event history and disjoint owned allocations. It removes only the linked
+  portion from activity, never raw balances or whole parents. It is a pure
+  read model; runtime catalog mapping and guarded atomic membership validation
+  are required before chart activation or financial publication.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
