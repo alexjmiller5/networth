@@ -38,6 +38,11 @@ protects the site and every API route.
   estate, never in source code. Tooltip rows that display as zero are hidden.
   Refunds reduce their spending category. Missing or malformed money is
   rejected rather than replaced with zero.
+- Verification selects each account's latest explicit monetary or unit checkpoint,
+  never the latest run for its entire source. Each account retains its own date.
+  A closed investment with independently verified zero cash and flat positions
+  may show current zero in Overview at/after that checkpoint. Its historical
+  market values remain unavailable; never backfill the chart with zeroes.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.

@@ -170,6 +170,7 @@
 		});
 	const coverageLabels = {
 		verified: 'Verified',
+		'verified-closed-zero': 'Verified current zero',
 		unverified: 'Unverified',
 		missing: 'Missing transactions',
 		'investment-unvalued': 'Investment value unavailable'
@@ -689,7 +690,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
 		<span
 			>{incomplete
-				? 'Incomplete balance coverage. Balances include verified monetary accounts only; investment values are unavailable.'
+				? 'Incomplete historical coverage. Charts include verified monetary accounts; Overview also shows verified closed investment zeroes.'
 				: 'Balances include verified monetary accounts.'}</span
 		>
 		<Button variant="outline" class="min-h-9" onclick={refresh} disabled={refreshing}

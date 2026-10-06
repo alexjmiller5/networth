@@ -237,7 +237,24 @@ export function buildView(
 				.sort()
 		])
 	];
-	const applicable = base.series.map((s) => s.key);
+	const currentZeros = new Set<string>();
+	// A flat closed account has a current value without implying historical prices.
+	if (!isFlow && state.presentation === 'overview') {
+		for (const account of accounts) {
+			const checkpoint = coverage?.find((c) => c.account_id === account.id);
+			if (
+				account.closed &&
+				checkpoint?.status === 'verified-closed-zero' &&
+				checkpoint.currentBalance === 0 &&
+				checkpoint.asOf &&
+				end >= checkpoint.asOf.slice(0, 10)
+			) {
+				const key = accountGroup(account, groupBy);
+				currentZeros.add(key);
+			}
+		}
+	}
+	const applicable = [...new Set([...base.series.map((s) => s.key), ...currentZeros])];
 	const requested = state.hidden[groupBy];
 	const hidden =
 		applicable.length && applicable.every((k) => requested.includes(k))
@@ -255,6 +272,7 @@ export function buildView(
 			cumulative ? (s.data.at(-1) ?? 0) : Math.round(s.data.reduce((n, v) => n + v, 0) * 100) / 100
 		])
 	);
+	for (const key of currentZeros) if (!values.has(key)) values.set(key, 0);
 	const summary = keys
 		.filter((key) => !hidden.includes(key) && (isFlow || key !== FRIEND_PAID))
 		.map((key) => ({ key, value: values.get(key) ?? null }));

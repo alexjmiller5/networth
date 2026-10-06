@@ -433,3 +433,93 @@ describe('page chart view', () => {
 		expect(pointsAt(rows, '2026-01-01')).toEqual([]);
 	});
 });
+
+it('shows verified closed zero only in current balance overview, never backfills chart history', () => {
+	const registry = [
+		{
+			id: 'closed-investment',
+			name: 'Closed investment',
+			bank: 'Example',
+			type: 'brokerage' as const,
+			closed: true
+		}
+	];
+	const coverage = [
+		{
+			account_id: 'closed-investment',
+			status: 'verified-closed-zero' as const,
+			basis: 'money' as const,
+			currentBalance: 0 as const,
+			asOf: '2026-01-03T00:00:00.000Z',
+			firstTransaction: '2026-01-01',
+			lastTransaction: '2026-01-02',
+			transactionCount: 2,
+			reasons: []
+		}
+	];
+	const current = state({
+		presentation: 'overview',
+		dateStart: '2026-01-01',
+		dateEnd: '2026-01-03'
+	});
+	expect(buildView([], registry, [], current, coverage).summary).toEqual([
+		{ key: 'closed-investment', value: 0 }
+	]);
+	for (const patch of [
+		{ presentation: 'chart' as const },
+		{ dateEnd: '2026-01-02' },
+		{ measure: 'activity' as const }
+	]) {
+		const v = buildView([], registry, [], { ...current, ...patch }, coverage);
+		expect(v.data.series).toEqual([]);
+		expect(v.summary[0].value).toBeNull();
+	}
+});
+
+it('allows hiding cash while keeping a verified closed zero visible in Overview', () => {
+	const registry = [
+		...accounts,
+		{
+			id: 'closed',
+			name: 'Closed investment',
+			bank: 'Example',
+			type: 'brokerage' as const,
+			closed: true
+		}
+	];
+	const coverage = [
+		{
+			account_id: 'account-1',
+			status: 'verified' as const,
+			basis: 'money' as const,
+			asOf: max,
+			firstTransaction: min,
+			lastTransaction: min,
+			transactionCount: 1,
+			reasons: []
+		},
+		{
+			account_id: 'closed',
+			status: 'verified-closed-zero' as const,
+			currentBalance: 0 as const,
+			basis: 'money' as const,
+			asOf: max,
+			firstTransaction: min,
+			lastTransaction: min,
+			transactionCount: 1,
+			reasons: []
+		}
+	];
+	const current = state({ presentation: 'overview' });
+	const v = buildView(
+		[{ account_id: 'account-1', date: min, amount: 100 }],
+		registry,
+		[],
+		current,
+		coverage
+	);
+	expect(v.applicable).toContain('closed');
+	expect(toggleHidden(current.hidden, 'account', 'account-1', v.applicable).account).toEqual([
+		'account-1'
+	]);
+});
