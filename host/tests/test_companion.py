@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from networth_host.companion import Companion
 from networth_host.journal import Conflict, Journal
@@ -159,4 +160,40 @@ class CompanionTests(unittest.TestCase):
         self.client.poll_once()
         with self.assertRaises(ProtocolError):
             self.client.queue_event("r", "account_observed", {"account_id": "b"})
+        self.assertIsNone(self.journal.pending("r/events"))
+
+    def test_stale_control_cannot_reuse_sequence_consumed_by_second_connection(self):
+        self.client.poll_once()
+        other_journal = Journal(Path(self.tmp.name) / "state.sqlite3")
+        self.addCleanup(other_journal.close)
+        other = Companion(other_journal, self.service, "h")
+        raced = False
+
+        def delayed_control(run_id):
+            nonlocal raced
+            snapshot = dict(self.service.snapshot)
+            if not raced:
+                raced = True
+                other.queue_event("r", "review_observed", {"state": "pending"})
+                other.flush_event("r")
+                self.service.snapshot |= {"next_sequence": 8, "revision": 11}
+            return snapshot
+
+        with patch.object(self.service, "control", side_effect=delayed_control):
+            with self.assertRaises(Conflict):
+                self.client.queue_event("r", "review_observed", {"state": "completed"})
+        self.assertIsNone(self.journal.pending("r/events"))
+        event = self.client.queue_event("r", "review_observed", {"state": "completed"})
+        self.assertEqual(event["sequence"], 8)
+        self.client.flush_event("r")
+        self.assertIsNone(other_journal.pending("r/events"))
+
+    def test_noncanonical_event_never_poison_pending_slot(self):
+        self.client.poll_once()
+        with self.assertRaises(ProtocolError):
+            self.client.queue_event("r", "review_observed", {"value": 0.5})
+        self.assertIsNone(self.journal.pending("r/events"))
+        event = self.client.queue_event("r", "review_observed", {"state": "pending"})
+        self.assertEqual(event["sequence"], 7)
+        self.client.flush_event("r")
         self.assertIsNone(self.journal.pending("r/events"))

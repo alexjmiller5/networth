@@ -97,6 +97,17 @@ def identifier(value):
     return value
 
 
+def scope_ids(ids):
+    """Validate unique bounded identities and return canonical membership order."""
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 256:
+        raise ProtocolError("invalid scope")
+    for item in ids:
+        identifier(item)
+    if len(set(ids)) != len(ids):
+        raise ProtocolError("duplicate scope identity")
+    return sorted(ids)
+
+
 CLAIM_KEYS = {
     "run_id",
     "host_id",
@@ -118,13 +129,7 @@ def claim_binding(claim, host_id):
         identifier(claim[key])
     safe_integer(claim["revision"])
     for key in ("account_ids", "tracking_task_ids"):
-        ids = claim[key]
-        if not isinstance(ids, list) or not 1 <= len(ids) <= 256:
-            raise ProtocolError("invalid scope")
-        for item in ids:
-            identifier(item)
-        if len(set(ids)) != len(ids):
-            raise ProtocolError("duplicate scope identity")
+        scope_ids(claim[key])
     if (
         claim["cancellation"] not in {"none", "requested", "acknowledged"}
         or type(claim["capture_closed"]) is not bool

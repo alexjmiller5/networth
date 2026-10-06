@@ -11,6 +11,8 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from .wire import canonical_request, safe_integer
+
 
 class Conflict(ValueError):
     """An operation would discard recovery evidence or exceed a bound run."""
@@ -226,7 +228,8 @@ class Journal:
 
     def retain(self, channel, message_id, payload):
         """Persist exact bytes BEFORE delivery. One unresolved message per channel."""
-        encoded = canonical(payload)
+        encoded = canonical_request(payload)
+        sequence = safe_integer(payload.get("sequence"), 1)
         with self.transaction():
             old = self.db.execute(
                 "SELECT payload FROM outbox WHERE channel=? AND id=?",
@@ -236,6 +239,16 @@ class Journal:
                 if old[0] != encoded:
                     raise Conflict("message identity reused with changed payload")
                 return
+            # The control response can predate another connection's delivery and
+            # ACK. Fence against durable consumed slots inside this write lock;
+            # stale callers must refetch control, never poison the pending slot.
+            consumed = self.db.execute(
+                "SELECT MAX(json_extract(payload, '$.sequence')) FROM outbox "
+                "WHERE channel=? AND decision IS NOT NULL",
+                (channel,),
+            ).fetchone()[0]
+            if consumed is not None and sequence <= consumed:
+                raise Conflict("stale event sequence; refetch control before retaining")
             try:
                 self.db.execute(
                     "INSERT INTO outbox VALUES (?,?,?,NULL)",

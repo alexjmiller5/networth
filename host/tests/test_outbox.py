@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from networth_host.journal import Conflict, Journal
+from networth_host.wire import ProtocolError
 
 
 class OutboxTests(unittest.TestCase):
@@ -64,3 +65,23 @@ class OutboxTests(unittest.TestCase):
         self.journal.acknowledge("run-1/events", "e1", {"outcome": "applied"})
         self.journal.retain("run-1/events", "e1", {"sequence": 1})
         self.assertIsNone(self.journal.pending("run-1/events"))
+
+    def test_consumed_sequences_cannot_be_reassigned_after_restart(self):
+        self.journal.retain("run-1/events", "e7", {"sequence": 7})
+        self.journal.acknowledge("run-1/events", "e7", {"outcome": "applied"})
+        second = Journal(self.path)
+        self.addCleanup(second.close)
+        for sequence in (6, 7):
+            with self.subTest(sequence=sequence), self.assertRaises(Conflict):
+                second.retain("run-1/events", "late", {"sequence": sequence})
+            self.assertIsNone(second.pending("run-1/events"))
+        second.retain("run-1/events", "e7", {"sequence": 7})
+        self.assertIsNone(second.pending("run-1/events"))
+        second.retain("run-2/events", "e7", {"sequence": 7})
+        self.assertEqual(second.pending("run-2/events"), {"sequence": 7})
+
+    def test_noncanonical_values_are_rejected_before_retention(self):
+        for value in (0.5, -0.0, 9007199254740992, "\ud800", {1: "value"}):
+            with self.subTest(value=repr(value)), self.assertRaises(ProtocolError):
+                self.journal.retain("run-1/events", "e7", {"sequence": 7, "value": value})
+            self.assertIsNone(self.journal.pending("run-1/events"))

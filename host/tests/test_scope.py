@@ -81,3 +81,33 @@ class ScopeTests(unittest.TestCase):
         for control in ({}, expected, expected | {"cancel_requested": "false"}):
             with self.subTest(control=control), self.assertRaises(ScopeError):
                 validate_control(expected, control)
+
+    def test_control_scope_compares_duplicate_free_membership_not_array_order(self):
+        expected = {
+            "run_id": "r",
+            "host_id": "h",
+            "lease_generation": "g",
+            "start_instruction_id": "instruction-1",
+            "account_ids": ["a", "b"],
+        }
+        good = expected | {
+            "account_ids": ["b", "a"],
+            "cancellation": "none",
+            "capture_closed": False,
+            "eligibility": {"state": "eligible"},
+            "reservation": "held",
+            "collection": "running",
+        }
+        validate_control(expected, good)
+        self.assertEqual(good["account_ids"], ["b", "a"])
+        for bad in (["a", "a", "b"], [], ["a", None], ["a", ""], ["a", "c"], "ab"):
+            with self.subTest(bad=bad), self.assertRaises(ScopeError):
+                validate_control(expected, good | {"account_ids": bad})
+            with self.subTest(expected=bad), self.assertRaises(ScopeError):
+                validate_control(expected | {"account_ids": bad}, good)
+
+        with self.assertRaises(ScopeError):
+            validate_control(
+                expected | {"account_ids": ["a", "a", "b"]},
+                good | {"account_ids": ["b", "a", "a"]},
+            )

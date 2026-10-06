@@ -6,6 +6,8 @@ must call this before the entire batch, then fence each actual write primitive.
 Preflight alone does not make later unguarded SQL safe against concurrent edits.
 """
 
+from .wire import ProtocolError, scope_ids
+
 
 class ScopeError(ValueError):
     pass
@@ -15,8 +17,12 @@ def validate_control(expected, control):
     for key in ("run_id", "host_id", "lease_generation", "start_instruction_id"):
         if not expected.get(key) or control.get(key) != expected[key]:
             raise ScopeError("control identity changed")
-    actual = control.get("account_ids")
-    if not isinstance(actual, list) or actual != expected["account_ids"]:
+    try:
+        actual = scope_ids(control.get("account_ids"))
+        wanted = scope_ids(expected.get("account_ids"))
+    except ProtocolError as exc:
+        raise ScopeError("invalid control scope") from exc
+    if actual != wanted:
         raise ScopeError("control scope changed")
     if (
         control.get("cancellation") != "none"
