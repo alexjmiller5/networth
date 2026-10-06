@@ -73,7 +73,9 @@ async function pull(
 		const res = await fetchFn(`${hub}/v1/rows/pull`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-			body: JSON.stringify({ table, columns, since: '', limit: 200, ...(after ? { after } : {}) }),
+			// The hub's supported complete-table read avoids serial round trips on cold loads.
+			// Continue with bounded pages only when the hub actually returns a cursor.
+			body: JSON.stringify({ table, columns, since: '', ...(after ? { after, limit: 200 } : {}) }),
 			signal,
 			// Workers supports manual/follow only. Reject 3xx below, keeping the
 			// credential on this exact configured destination.
