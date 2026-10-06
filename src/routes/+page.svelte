@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import IconFlag from '@tabler/icons-svelte/icons/flag';
+	import MarkersDialog from '$lib/components/MarkersDialog.svelte';
+	import { visibleMarkers, type Marker, type MarkerInput } from '$lib/finance/markers';
 	import { formatMoney, formatUnits, formatCoverage } from '$lib/finance/display';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
 	import IconEyeOff from '@tabler/icons-svelte/icons/eye-off';
@@ -52,6 +55,46 @@
 
 	let { data }: { data: Estate & { savedAt: string | null } } = $props();
 	const accounts = $derived(data.accounts);
+	let markers = $state<Marker[]>([]);
+	let markersOpen = $state(false);
+	let markersLoaded = $state(false);
+	let markersError = $state('');
+	async function markerRequest<T = null>(method = 'GET', body?: unknown) {
+		const response = await fetch('/api/markers', {
+			method,
+			cache: 'no-store',
+			redirect: 'error',
+			signal: AbortSignal.timeout(10000),
+			...(body === undefined
+				? {}
+				: { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+		});
+		if (
+			!response.headers.get('content-type')?.includes('application/json') &&
+			response.status !== 204
+		)
+			throw new Error('Markers could not be loaded. Reconnect and try again.');
+		const result = response.status === 204 ? null : ((await response.json()) as { error?: string });
+		if (!response.ok) throw new Error(result?.error ?? 'Marker request failed. Try again.');
+		return result as T;
+	}
+	async function loadMarkers() {
+		const result = await markerRequest<{ markers: Marker[] }>();
+		markers = result.markers;
+		markersLoaded = true;
+		markersError = '';
+	}
+	async function saveMarker(input: MarkerInput, createId: string, existing?: Marker) {
+		const marker: Marker = await markerRequest<Marker>(existing ? 'PUT' : 'POST', {
+			...input,
+			...(existing ? { id: existing.id, revision: existing.revision } : { id: createId })
+		});
+		markers = [...markers.filter((m) => m.id !== marker.id), marker];
+	}
+	async function deleteMarker(marker: Marker) {
+		await markerRequest('DELETE', { id: marker.id, revision: marker.revision });
+		markers = markers.filter((m) => m.id !== marker.id);
+	}
 	const categories = $derived(data.categories);
 	const dates = $derived(
 		[
@@ -190,6 +233,9 @@
 		writeControls(storage, viewState);
 	});
 	onMount(() => {
+		void loadMarkers().catch(() => {
+			markersError = 'Markers are unavailable. Financial data is still shown.';
+		});
 		const url = new URL(window.location.href);
 		url.search = clearControlParams(url.searchParams).toString();
 		if (url.href !== window.location.href)
@@ -230,6 +276,15 @@
 		</p>{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
+		<Button
+			variant="outline"
+			class="min-h-9"
+			disabled={controls.hideAmounts || !markersLoaded}
+			title={controls.hideAmounts
+				? 'Show amounts to edit marker text'
+				: 'Add or edit event markers'}
+			onclick={() => (markersOpen = true)}><IconFlag size={16} />Markers</Button
+		>
 		<Button
 			variant="outline"
 			class="min-h-9"
@@ -667,6 +722,7 @@
 	{:else}
 		<BalanceChart
 			data={view.data}
+			markers={visibleMarkers(markers, viewState.dateStart, viewState.dateEnd)}
 			hideAmounts={controls.hideAmounts}
 			bucket={controls.bucket}
 			kind={controls.kind}
@@ -707,6 +763,17 @@
 		>
 	</div>
 	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
+	{#if markersError}<p class="text-sm text-destructive" role="alert">
+			{markersError}
+			<button
+				class="underline"
+				onclick={() => {
+					void loadMarkers().catch(() => {
+						markersError = 'Markers are unavailable. Try again later.';
+					});
+				}}>Retry markers</button
+			>
+		</p>{/if}
 	<details class="rounded-lg border p-3">
 		<summary class="cursor-pointer text-sm">Balance coverage · selected accounts</summary>
 		<ul class="mt-3 space-y-3 text-xs">
@@ -747,3 +814,14 @@
 		</div>
 	{/if}
 </main>
+
+{#if markersOpen && !controls.hideAmounts}
+	<MarkersDialog
+		open={markersOpen}
+		{markers}
+		onSave={saveMarker}
+		onDelete={deleteMarker}
+		onReload={loadMarkers}
+		onClose={() => (markersOpen = false)}
+	/>
+{/if}

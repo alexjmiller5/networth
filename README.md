@@ -61,7 +61,7 @@ current name applies after the last historical interval.
 
 ## Configuration and development
 
-Requires Bun. Set `LIFE_HUB_URL` in `wrangler.jsonc` to the hub endpoint and
+Requires Bun and Node 24 for the SQLite-backed API tests. Set `LIFE_HUB_URL` in `wrangler.jsonc` to the hub endpoint and
 provide `LIFE_HUB_TOKEN` as a server secret. The token needs `tables:read`
 only. `.env.tpl` contains 1Password references, never secret values.
 
@@ -85,6 +85,44 @@ live token. Run it through the project bootstrap process so the newly minted
 value goes straight into the project's secret vault.
 
 ## Deployment
+
+### Marker storage activation
+
+Event markers belong to this dashboard's `MARKERS_DB` D1 binding, independently
+of the read-only financial service. `wrangler.jsonc` declares `networth-markers`
+with an explicit `UNPROVISIONED` ID. This source configuration is not deployable
+until the project's own database is provisioned and its real ID is recorded.
+
+After deployment approval, use `scripts/cf-d1.py` from the cf-site template
+with the owning project's provisioning credentials in `CLOUDFLARE_API_TOKEN`
+and `CLOUDFLARE_ACCOUNT_ID`. `--parse-only` is offline; `--dry-run` reads the
+provider without creating anything. The existing Workers-only deployment
+token does not grant D1 provisioning or migration permissions. Never substitute
+another project's database or credentials.
+
+Apply `migrations/0001_markers.sql` through Wrangler's D1 migrations interface
+to the new database before the approved deployment. Future schema changes
+follow the same reviewed migration step. Local development requires no
+provider credentials:
+
+```sh
+bunx wrangler d1 migrations apply networth-markers --local
+```
+
+The Markers button adds dated points or inclusive ranges, edits titles/dates,
+and deletes individual annotations. Calendar dates are UTC labels. Each edit
+and deletion checks the last-read revision; after a conflict the draft stays
+visible. Reload saved markers and choose Edit on the latest entry to reconcile.
+A draft keeps its creation ID through failed requests, so retrying a lost response
+does not duplicate the marker. Changed content under an already saved ID conflicts;
+reload or explicitly start a New draft to proceed. Deletion keeps only the consumed
+ID, so an older creation retry cannot restore a deleted marker.
+Markers require an online request and are not included in the offline finance
+cache. A storage failure keeps the financial dashboard usable and shows Retry.
+
+Amount concealment replaces marker text with “Hidden marker” in chart labels,
+tooltips and the accessible list, and disables editing. Dates and marker geometry
+remain visible. This is visual concealment, not dataset redaction.
 
 GitHub Actions tests, checks, builds, and deploys pushes to `main`. Its sole
 GitHub secret is the project's `OP_SERVICE_ACCOUNT_TOKEN`; the workflow
