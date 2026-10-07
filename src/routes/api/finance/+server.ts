@@ -104,7 +104,7 @@ async function pull(
 	}
 }
 
-export const GET: RequestHandler = async ({ platform, fetch }) => {
+export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], widgetsOnly = false) {
 	const env = { ...privateEnv, ...platform?.env } as {
 		LIFE_HUB_URL?: string;
 		LIFE_HUB_TOKEN?: string;
@@ -117,18 +117,45 @@ export const GET: RequestHandler = async ({ platform, fetch }) => {
 		const [accounts, overlay, shares, points, categories, scrape_runs, venmo_statement_lines] =
 			await Promise.all(
 				Object.entries(TABLES).map(([t, cols]) =>
-					pull(hub, token, t === 'points' ? 'points_balances' : t, cols, fetch)
+					widgetsOnly && !['accounts', 'scrape_runs'].includes(t)
+						? Promise.resolve([])
+						: pull(hub, token, t === 'points' ? 'points_balances' : t, cols, fetch)
 				)
 			);
-		const sources = [...new Set(accounts.filter((a) => a.deleted_at == null).map((a) => a.source))];
+		// Reuse registry normalization, including both supported closure fields.
+		const cardIds = widgetsOnly
+			? new Set(
+					assemble({
+						accounts,
+						overlay: [],
+						shares: [],
+						points: [],
+						categories: [],
+						scrape_runs: [],
+						venmo_statement_lines: [],
+						txns: {}
+					})
+						.accounts.filter((a) => a.type === 'credit_card' && !a.closed)
+						.map((a) => a.id)
+				)
+			: null;
+		const selectedAccounts = cardIds ? accounts.filter((a) => cardIds.has(String(a.id))) : accounts;
+		const sources = [
+			...new Set(selectedAccounts.filter((a) => a.deleted_at == null).map((a) => a.source))
+		];
 		if (sources.some((s) => typeof s !== 'string' || !/^[a-z][a-z0-9_]*$/.test(s)))
 			throw new Error('Invalid source');
 		const txnRows = await Promise.all(
 			sources.map((s) => pull(hub, token, `txns_${s}`, TXN_COLUMNS, fetch))
 		);
-		const txns = Object.fromEntries(sources.map((s, i) => [s, txnRows[i]]));
+		const txns = Object.fromEntries(
+			sources.map((s, i) => [
+				s,
+				cardIds ? txnRows[i].filter((t) => cardIds.has(String(t.account_id))) : txnRows[i]
+			])
+		);
 		const estate = assemble({
-			accounts,
+			accounts: selectedAccounts,
 			overlay,
 			shares,
 			points,
@@ -162,4 +189,4 @@ export const GET: RequestHandler = async ({ platform, fetch }) => {
 		// Provider bodies and raw validation details can contain private data.
 		throw error(502, 'Finance data could not be loaded. Try refreshing.');
 	}
-};
+}

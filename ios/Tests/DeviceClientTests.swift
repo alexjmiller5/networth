@@ -72,4 +72,15 @@ private final class SourceProtocol: URLProtocol, @unchecked Sendable {
         }
         try await DeviceClient(session: session()).revoke(value)
     }
+    @Test @MainActor func timeoutReleasesRefreshAndExplainsRetry() async throws {
+        let store = EnrollmentStore(service: "test.networth.\(UUID().uuidString)")
+        defer { try? store.remove() }
+        try store.save(credential())
+        SourceProtocol.handler = { _ in throw URLError(.timedOut) }
+        let model = DashboardModel(credentials: store, client: DeviceClient(session: session()), snapshots: nil)
+        await model.refresh()
+        #expect(!model.busy)
+        #expect(model.enrollment != nil)
+        #expect(model.message.contains("try again"))
+    }
 }
