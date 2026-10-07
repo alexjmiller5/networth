@@ -223,7 +223,9 @@ export function assembleRewards(
 			key = JSON.stringify([program_id, text(row.component_key)]);
 		if (!program || components.has(id) || componentKeys.has(key)) fail();
 		componentKeys.add(key);
+		const unit = text(row.unit);
 		const currency = optional(row.currency);
+		if (currency ? unit !== currency : Intl.supportedValuesOf('currency').includes(unit)) fail();
 		if (currency && !Intl.supportedValuesOf('currency').includes(currency)) fail();
 		const role = choice(row.role, ['redeemable', 'qualifying', 'cash_reward', 'certificate']);
 		if (role === 'cash_reward' && !currency) fail();
@@ -231,7 +233,7 @@ export function assembleRewards(
 			id,
 			program_id,
 			label: text(row.label),
-			unit: text(row.unit),
+			unit,
 			role,
 			currency,
 			events: [],
