@@ -374,3 +374,24 @@ deploys target his Cloudflare account.
 - Run the offline helper and service-worker regression tests with the normal test
   suite; verify the production build with browser networking disabled, not Vite dev
   (SvelteKit only registers the service worker in production).
+
+## Native widget devices
+
+- Networth owns `WIDGETS_DB` (`networth-widgets`), separate from financial
+  source storage. Its schema is in `migrations-widgets/`; provision with
+  `scripts/cf-d1.py` and apply migrations using the owning operator identity.
+- `/widgets` and `/api/widget-devices` require Cloudflare Access. Mutations also
+  require exact same-origin requests. The Access assertion header is checked
+  for presence as defense in depth, not represented as local JWT verification.
+- Only `/api/device/*` may bypass browser Access. It has an explicit allowlist:
+  GET session, GET snapshot and DELETE session. A native device generates a
+  random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
+  reaches the approval page. No Life Data, operator or browser credential goes
+  to native consumers. Public callers cannot stage or approve enrollment.
+- Pending enrollment expires in ten minutes. Exact retries preserve expiry;
+  conflicting identity and revoked fingerprints cannot be reactivated. The
+  owner may revoke one device; an offline cached snapshot cannot be remotely
+  erased until the device reconnects or its app is removed.
+- Widget balances reuse verified ledger selection and retain per-account source
+  dates. Snapshot fetch time is not collection time. The device API projects
+  only widget fields and rechecks revocation after slow source reads.

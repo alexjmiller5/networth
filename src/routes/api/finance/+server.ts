@@ -4,7 +4,7 @@
 // Worker. LIFE_HUB_URL is a var (wrangler.jsonc), LIFE_HUB_TOKEN a secret.
 import { json, error } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from '@sveltejs/kit';
 import { assemble, type HubRow } from '$lib/finance/assemble';
 import { categoryIconUrl } from '$lib/server/categoryIcons';
 

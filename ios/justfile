@@ -1,0 +1,9 @@
+app := "Networth"
+derived_data := env_var_or_default("IOS_DERIVED_DATA", env_var("HOME") + "/Library/Developer/Xcode/DerivedData/Networth")
+test_destination := env_var_or_default("IOS_TEST_DESTINATION", "platform=iOS Simulator,name=iPhone 17")
+gen:
+    XCODEGEN="$(realpath "$(command -v xcodegen)")"; "$XCODEGEN" generate --spec project.yml
+check: gen
+    xcodebuild -project Networth.xcodeproj -scheme Networth -derivedDataPath "{{derived_data}}" -destination "generic/platform=iOS Simulator" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+test: gen
+    xcodebuild -project Networth.xcodeproj -scheme Networth -derivedDataPath "{{derived_data}}" -destination "{{test_destination}}" CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES test
