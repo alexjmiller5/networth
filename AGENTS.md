@@ -395,3 +395,9 @@ deploys target his Cloudflare account.
 - Widget balances reuse verified ledger selection and retain per-account source
   dates. Snapshot fetch time is not collection time. The device API projects
   only widget fields and rechecks revocation after slow source reads.
+- The native app and extension use the same configured App Group and separate
+  exact Ad Hoc profiles. `ios/justfile` exposes simulator checks, tests, and a
+  release archive through `scripts/sign-widgets.py`. Signing inputs come from
+  the caller's credential provider; the helper verifies both exported targets
+  and removes its temporary keychain and profile copies. Native enrollment is
+  device state and must be repeated on replacement phones.
