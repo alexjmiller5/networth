@@ -65,7 +65,9 @@ import WidgetKit
                 // An un-staged pending request also returns 401; it grants no access.
                 if snapshot != nil { try? snapshots?.clear(); snapshot=nil; WidgetCenter.shared.reloadAllTimelines() }
             }
-            message=error.localizedDescription
+            if let networkError = error as? URLError, networkError.code == .timedOut {
+                message=String(localized:"Refresh timed out. Check your connection and try again. Your saved snapshot is unchanged.")
+            } else { message=error.localizedDescription }
         }
     }
     func disconnect() async {
