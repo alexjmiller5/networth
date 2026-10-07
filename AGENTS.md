@@ -95,6 +95,16 @@ protects the site and every API route.
   one Wrangler deploy, with secret data on stdin only. CI runs this after
   tests, static checks, formatting checks, and the production build.
 
+## Finance launch boundary
+
+The outbound host companion in `host/` and canonical run DTO are source-only.
+`src/lib/server/finance-runs.ts` implements request persistence, global physical
+browser reservation and serialized cancel/claim intent. Its migration under
+`migrations/finance-runs/` has no production binding or route. See
+`docs/finance-runs.md`. Do not activate collection until authenticated enrollment,
+request/event recovery, authoritative native identity, verified client reachability,
+collector-context binding and mandatory source controls are delivered and verified.
+
 ## Architecture rules
 
 - Interactive event markers use only this project's `MARKERS_DB` D1 binding
