@@ -237,3 +237,20 @@ it('rejects two typed successors of one legacy observation', () => {
 		selected: null
 	});
 });
+it('rejects currency components with missing or different native currency before displaying totals', () => {
+	for (const patch of [
+		{ unit: 'USD', currency: null },
+		{ unit: 'points', currency: 'USD' },
+		{ unit: 'USD', currency: 'EUR' }
+	]) {
+		expect(() => run([event()], [], true, [{ ...component, ...patch }])).toThrow(
+			'Invalid reward data'
+		);
+	}
+	const result = run([], [], true, [{ ...component, unit: 'MQD', role: 'qualifying' }]);
+	expect(result.programs[0].components[0]).toMatchObject({ unit: 'MQD', currency: null });
+	expect(
+		run([], [], true, [{ ...component, unit: 'USD', currency: 'USD', role: 'cash_reward' }])
+			.programs[0].components[0].currency
+	).toBe('USD');
+});
