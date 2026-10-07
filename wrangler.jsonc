@@ -12,13 +12,12 @@
 	},
 	"workers_dev": true,
 	"preview_urls": false,
-	// Provision Networth's own database and replace this explicit placeholder
-	// before deployment. Local Wrangler uses isolated on-disk D1 state.
+	// Networth owns this database. Local Wrangler uses isolated on-disk D1 state.
 	"d1_databases": [
 		{
 			"binding": "MARKERS_DB",
 			"database_name": "networth-markers",
-			"database_id": "UNPROVISIONED",
+			"database_id": "da87045c-3f3a-4663-a3fb-eedf28c856b4",
 			"migrations_dir": "migrations"
 		}
 	],

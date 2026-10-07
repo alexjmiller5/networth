@@ -90,8 +90,8 @@ value goes straight into the project's secret vault.
 
 Event markers belong to this dashboard's `MARKERS_DB` D1 binding, independently
 of the read-only financial service. `wrangler.jsonc` declares `networth-markers`
-with an explicit `UNPROVISIONED` ID. This source configuration is not deployable
-until the project's own database is provisioned and its real ID is recorded.
+with its provisioned database ID. The Worker uses the binding directly;
+its runtime has no database-provider credential.
 
 After deployment approval, use `scripts/cf-d1.py` from the cf-site template
 with the owning project's provisioning credentials in `CLOUDFLARE_API_TOKEN`

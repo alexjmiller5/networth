@@ -97,8 +97,8 @@ protects the site and every API route.
 - Concealment hides marker free text in labels, tooltips, accessible names and
   lists, and disables the editor. Dates/relative geometry can remain visible.
 - D1 provisioning uses `scripts/cf-d1.py` and project-owned operator credentials.
-  The explicit unprovisioned database ID must be replaced and migrations applied
-  under deployment approval before this binding can run remotely.
+  Apply schema migrations under deployment approval before code requires them.
+  CI retains its Workers-only credential; it does not provision or migrate D1.
 
 - **Backend logic that exists to serve this site lives HERE** as SvelteKit
   server routes (`+page.server.ts`, `src/routes/api/*/+server.ts`) — it all
