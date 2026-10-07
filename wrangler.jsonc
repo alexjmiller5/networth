@@ -12,6 +12,15 @@
 	},
 	"workers_dev": true,
 	"preview_urls": false,
+	// Networth owns this database. Local Wrangler uses isolated on-disk D1 state.
+	"d1_databases": [
+		{
+			"binding": "MARKERS_DB",
+			"database_name": "networth-markers",
+			"database_id": "da87045c-3f3a-4663-a3fb-eedf28c856b4",
+			"migrations_dir": "migrations"
+		}
+	],
 	"secrets": { "required": ["LIFE_HUB_TOKEN"] },
 	// Where the estate lives. The read token (LIFE_HUB_TOKEN) is a Worker
 	// secret pushed by scripts/sync-secrets.sh, never a var.
