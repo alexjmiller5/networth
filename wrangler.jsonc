@@ -15,6 +15,12 @@
 	// Networth owns this database. Local Wrangler uses isolated on-disk D1 state.
 	"d1_databases": [
 		{
+			"binding": "WIDGETS_DB",
+			"database_name": "networth-widgets",
+			"database_id": "b3b28b4b-bd99-4654-9974-665d7e1c948c",
+			"migrations_dir": "migrations-widgets"
+		},
+		{
 			"binding": "MARKERS_DB",
 			"database_name": "networth-markers",
 			"database_id": "da87045c-3f3a-4663-a3fb-eedf28c856b4",
