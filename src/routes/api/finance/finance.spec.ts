@@ -85,6 +85,46 @@ const transaction = (id: string, amount: number) => ({
 	status: 'posted'
 });
 
+it('loads only open card ledgers for widgets, so unrelated source failures cannot block refresh', async () => {
+	const requested: string[] = [];
+	const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const { table } = JSON.parse(String(init?.body));
+		requested.push(table);
+		const rows =
+			table === 'accounts'
+				? [
+						{ ...account('card'), type: 'credit_card' },
+						account('checking'),
+						{ ...account('closed'), type: 'credit_card', is_closed: 1 },
+						account('wallet', 'slow')
+					]
+				: table === 'scrape_runs'
+					? [
+							{
+								source: 'bank',
+								status: 'ok',
+								reconciled: 1,
+								finished_at: '2026-01-06T00:00:00.000Z',
+								stated_balances: { card: -12 }
+							}
+						]
+					: table === 'txns_bank'
+						? [
+								{ ...transaction('purchase', -12), account_id: 'card' },
+								{ ...transaction('other', 100), account_id: 'checking' }
+							]
+						: null;
+		if (rows === null) throw new Error('Unrelated source unavailable');
+		return Response.json({ rows });
+	});
+	const response = await GET(event(fetch), true);
+	const estate = (await response.json()) as Estate;
+	expect(requested.sort()).toEqual(['accounts', 'scrape_runs', 'txns_bank']);
+	expect(estate.accounts.map((a) => a.id)).toEqual(['card']);
+	expect(estate.txns.map((t) => t.source_id)).toEqual(['purchase']);
+	expect(estate.coverage).toMatchObject([{ account_id: 'card', status: 'verified' }]);
+});
+
 describe('hub pagination', () => {
 	it('assembles all account and transaction pages using the same allowlisted request and destination', async () => {
 		const requests: Record<string, unknown>[] = [];

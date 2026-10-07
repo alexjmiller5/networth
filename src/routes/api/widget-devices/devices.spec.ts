@@ -76,6 +76,7 @@ it('requires protected same-origin approval before serving a narrow snapshot', a
 	expect(response.status).toBe(200);
 	expect(await response.clone().text()).not.toContain('privateEvidence');
 	expect(await response.json()).toMatchObject({ version: 1, balances: [] });
+	expect(financeGET).toHaveBeenLastCalledWith(expect.anything(), true);
 	expect(response.headers.get('cache-control')).toContain('no-store');
 });
 it('rejects cross-origin/missing edge identity before creating rows and does not allow public staging', async () => {
