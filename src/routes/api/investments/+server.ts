@@ -1,7 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
-import { assembleInvestments, type InvestmentRow } from '$lib/finance/investments';
+import { pullNativeTable } from '$lib/server/native-finance';
+import { assembleInvestments } from '$lib/finance/investments';
 
 const TABLES = {
 	investment_instruments: [
@@ -38,45 +39,6 @@ const TABLES = {
 		'deleted_at'
 	]
 };
-async function pull(
-	hub: string,
-	token: string,
-	table: string,
-	columns: string[],
-	fetchFn: typeof fetch
-) {
-	const rows: InvestmentRow[] = [];
-	let after = '';
-	let complete = true;
-	const signal = AbortSignal.timeout(20_000);
-	while (true) {
-		const response = await fetchFn(`${hub}/v1/rows/pull`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-			body: JSON.stringify({ table, columns, since: '', ...(after ? { after, limit: 200 } : {}) }),
-			signal,
-			redirect: 'manual'
-		});
-		if (!response.ok || response.redirected) throw new Error('Hub read failed');
-		const body: unknown = await response.json();
-		if (
-			!body ||
-			typeof body !== 'object' ||
-			!('rows' in body) ||
-			!Array.isArray(body.rows) ||
-			body.rows.some((r) => !r || typeof r !== 'object' || Array.isArray(r))
-		)
-			throw new Error('Invalid hub response');
-		const cursor = 'next_cursor' in body ? body.next_cursor : null;
-		if (cursor != null && (typeof cursor !== 'string' || cursor <= after || !body.rows.length))
-			throw new Error('Invalid hub cursor');
-		for (const row of body.rows) rows.push(row);
-		if (cursor == null) return { rows, complete };
-		// ID pagination has no snapshot token. A correction inserted behind the cursor could be missed.
-		complete = false;
-		after = cursor;
-	}
-}
 export const GET: RequestHandler = async ({ platform, fetch }) => {
 	const env = { ...privateEnv, ...platform?.env } as {
 		LIFE_HUB_URL?: string;
@@ -87,7 +49,9 @@ export const GET: RequestHandler = async ({ platform, fetch }) => {
 	if (!hub || !token) throw error(503, 'Investment observations are not configured yet.');
 	try {
 		const [instruments, observations] = await Promise.all(
-			Object.entries(TABLES).map(([table, columns]) => pull(hub, token, table, columns, fetch))
+			Object.entries(TABLES).map(([table, columns]) =>
+				pullNativeTable(hub, token, table, columns, fetch)
+			)
 		);
 		return json(
 			assembleInvestments(instruments.rows, observations.rows, {
