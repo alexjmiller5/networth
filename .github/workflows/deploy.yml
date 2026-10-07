@@ -32,6 +32,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: op://Networth/Networth CI Cloudflare Token/account-id
       - run: bun install --frozen-lockfile
       - run: bun run test
+      - run: python3 scripts/widget_signing_test.py
       - run: bun run check
       - run: bun run lint
       - run: bun run build
