@@ -29,3 +29,18 @@ signing facts belong to the owning signing configuration, never the source.
 
 A signed physical installation must verify App Group access and widget rendering.
 Simulator tests prove Keychain round trips and validation, not physical signing.
+
+For an Ad Hoc archive, supply `IOS_BUNDLE_ID`, `IOS_APP_GROUP`,
+`IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD`, and
+`IOS_PROFILE_MAP_JSON` through your signing credential provider. The profile map
+is a JSON object from each exact application/extension bundle identifier to its
+base64 provisioning profile. Set `IOS_RELEASE_OUTPUT` to a directory outside the
+repository, then run `just release`. Optional `IOS_DEVICE_ID` verifies that both
+profiles authorize the selected device. The archive helper validates both
+embedded profiles, signing identities, and App Group entitlements, and cleans
+its disposable keychain and temporary profiles. It never installs or publishes.
+
+Run `python3 scripts/widget_signing_test.py` from the repository root to verify
+the profile selection rules. Use the paired Mac's `devicectl device install app`
+with the verified IPA for physical installation. A replacement phone must be
+registered in both profiles and separately enrolled in the dashboard.

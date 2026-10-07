@@ -24,6 +24,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(NETWORTH_BUNDLE_ID)
         PRODUCT_NAME: Networth
+        PROVISIONING_PROFILE_SPECIFIER: $(IOS_APP_PROFILE)
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: '1,2'
     info:
@@ -47,6 +48,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(NETWORTH_BUNDLE_ID).widgets
         PRODUCT_NAME: NetworthWidgets
+        PROVISIONING_PROFILE_SPECIFIER: $(IOS_WIDGET_PROFILE)
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
     info:

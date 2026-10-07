@@ -7,3 +7,5 @@ check: gen
     xcodebuild -project Networth.xcodeproj -scheme Networth -derivedDataPath "{{derived_data}}" -destination "generic/platform=iOS Simulator" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
 test: gen
     xcodebuild -project Networth.xcodeproj -scheme Networth -derivedDataPath "{{derived_data}}" -destination "{{test_destination}}" CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES test
+release: gen
+    python3 ../scripts/sign-widgets.py --project Networth.xcodeproj --scheme Networth --output "${IOS_RELEASE_OUTPUT:?Set an output directory outside the repository}"
