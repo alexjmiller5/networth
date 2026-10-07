@@ -4,7 +4,7 @@
 // Worker. LIFE_HUB_URL is a var (wrangler.jsonc), LIFE_HUB_TOKEN a secret.
 import { json, error } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from '@sveltejs/kit';
 import { assemble, type HubRow } from '$lib/finance/assemble';
 import { categoryIconUrl } from '$lib/server/categoryIcons';
 
@@ -66,33 +66,45 @@ async function pull(
 	columns: string[],
 	fetchFn: typeof fetch
 ): Promise<HubRow[]> {
-	const res = await fetchFn(`${hub}/v1/rows/pull`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-		body: JSON.stringify({ table, columns, since: '' }),
-		signal: AbortSignal.timeout(20_000),
-		// Workers supports manual/follow only. Reject 3xx below, keeping the
-		// credential on this exact configured destination.
-		redirect: 'manual'
-	});
-	if (!res.ok) {
-		console.error('Finance hub request failed', { table, status: res.status });
-		throw new Error('Hub request failed');
+	const rows: HubRow[] = [];
+	let after = '';
+	const signal = AbortSignal.timeout(20_000);
+	while (true) {
+		const res = await fetchFn(`${hub}/v1/rows/pull`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			// The hub's supported complete-table read avoids serial round trips on cold loads.
+			// Continue with bounded pages only when the hub actually returns a cursor.
+			body: JSON.stringify({ table, columns, since: '', ...(after ? { after, limit: 200 } : {}) }),
+			signal,
+			// Workers supports manual/follow only. Reject 3xx below, keeping the
+			// credential on this exact configured destination.
+			redirect: 'manual'
+		});
+		if (!res.ok) {
+			console.error('Finance hub request failed', { table, status: res.status });
+			throw new Error('Hub request failed');
+		}
+		const body: unknown = await res.json();
+		if (
+			!body ||
+			typeof body !== 'object' ||
+			!('rows' in body) ||
+			!Array.isArray(body.rows) ||
+			body.rows.some((row: unknown) => !row || typeof row !== 'object' || Array.isArray(row))
+		) {
+			throw new Error('Invalid hub response');
+		}
+		const cursor = 'next_cursor' in body ? body.next_cursor : null;
+		if (cursor != null && (typeof cursor !== 'string' || cursor <= after || !body.rows.length))
+			throw new Error('Invalid hub cursor');
+		for (const row of body.rows) rows.push(row as HubRow);
+		if (cursor == null) return rows; // Legacy hubs return the complete table without a cursor.
+		after = cursor;
 	}
-	const body: unknown = await res.json();
-	if (
-		!body ||
-		typeof body !== 'object' ||
-		!('rows' in body) ||
-		!Array.isArray(body.rows) ||
-		body.rows.some((row: unknown) => !row || typeof row !== 'object' || Array.isArray(row))
-	) {
-		throw new Error('Invalid hub response');
-	}
-	return body.rows as HubRow[];
 }
 
-export const GET: RequestHandler = async ({ platform, fetch }) => {
+export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], widgetsOnly = false) {
 	const env = { ...privateEnv, ...platform?.env } as {
 		LIFE_HUB_URL?: string;
 		LIFE_HUB_TOKEN?: string;
@@ -105,18 +117,45 @@ export const GET: RequestHandler = async ({ platform, fetch }) => {
 		const [accounts, overlay, shares, points, categories, scrape_runs, venmo_statement_lines] =
 			await Promise.all(
 				Object.entries(TABLES).map(([t, cols]) =>
-					pull(hub, token, t === 'points' ? 'points_balances' : t, cols, fetch)
+					widgetsOnly && !['accounts', 'scrape_runs'].includes(t)
+						? Promise.resolve([])
+						: pull(hub, token, t === 'points' ? 'points_balances' : t, cols, fetch)
 				)
 			);
-		const sources = [...new Set(accounts.filter((a) => a.deleted_at == null).map((a) => a.source))];
+		// Reuse registry normalization, including both supported closure fields.
+		const cardIds = widgetsOnly
+			? new Set(
+					assemble({
+						accounts,
+						overlay: [],
+						shares: [],
+						points: [],
+						categories: [],
+						scrape_runs: [],
+						venmo_statement_lines: [],
+						txns: {}
+					})
+						.accounts.filter((a) => a.type === 'credit_card' && !a.closed)
+						.map((a) => a.id)
+				)
+			: null;
+		const selectedAccounts = cardIds ? accounts.filter((a) => cardIds.has(String(a.id))) : accounts;
+		const sources = [
+			...new Set(selectedAccounts.filter((a) => a.deleted_at == null).map((a) => a.source))
+		];
 		if (sources.some((s) => typeof s !== 'string' || !/^[a-z][a-z0-9_]*$/.test(s)))
 			throw new Error('Invalid source');
 		const txnRows = await Promise.all(
 			sources.map((s) => pull(hub, token, `txns_${s}`, TXN_COLUMNS, fetch))
 		);
-		const txns = Object.fromEntries(sources.map((s, i) => [s, txnRows[i]]));
+		const txns = Object.fromEntries(
+			sources.map((s, i) => [
+				s,
+				cardIds ? txnRows[i].filter((t) => cardIds.has(String(t.account_id))) : txnRows[i]
+			])
+		);
 		const estate = assemble({
-			accounts,
+			accounts: selectedAccounts,
 			overlay,
 			shares,
 			points,
@@ -150,4 +189,4 @@ export const GET: RequestHandler = async ({ platform, fetch }) => {
 		// Provider bodies and raw validation details can contain private data.
 		throw error(502, 'Finance data could not be loaded. Try refreshing.');
 	}
-};
+}

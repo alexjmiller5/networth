@@ -6,13 +6,22 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance` is the only data path. `LIFE_HUB_URL` is server configuration;
+- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `LIFE_HUB_URL` is
+  server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
   enabled for the public URL read path. Local runtime tests cannot prove
   Cloudflare's production routing; verify an authenticated API response
   after deploying.
+  Start with the supported complete-table pull (omit `limit`) to avoid serial
+  small-page latency on cold loads. Pull every returned `next_cursor` page before
+  assembly with `limit: 200`, sending the opaque cursor as
+  `after` to the same configured destination with the same table/column list.
+  Missing/null cursors end a pull (including legacy complete responses).
+  Continuing pages must be nonempty with a strictly advancing string cursor;
+  malformed or failed pages reject the whole response. Each table's complete
+  pull shares a 20-second timeout.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
@@ -38,12 +47,42 @@ protects the site and every API route.
   estate, never in source code. Tooltip rows that display as zero are hidden.
   Refunds reduce their spending category. Missing or malformed money is
   rejected rather than replaced with zero.
+- Verification selects each account's latest explicit monetary or unit checkpoint,
+  never the latest run for its entire source. Each account retains its own date.
+  A closed investment with independently verified zero cash and flat positions
+  may show current zero in Overview at/after that checkpoint. Its historical
+  market values remain unavailable; never backfill the chart with zeroes.
+- `/benefits` reads provider-native plans and observations separately from cash
+  and net worth. Keep metrics independent and nullable; suppressed vested amounts
+  stay null. Group by plan/year, order source date before capture time, and never
+  publish raw evidence references. Reuse device-local amount concealment, including
+  eligibility prose, without resetting other controls. See `docs/benefits.md`.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
+- `/investments` displays native instrument observations with exact decimal text.
+  Source dates, timestamps, currencies, and price clocks remain separate groups.
+  Validate complete correction membership before selecting heads; forks, cycles,
+  duplicate IDs, missing predecessors and cross-group edges suppress selection.
+  Paged pulls have no snapshot guard and are therefore display-only. Unknown
+  dates and unresolved instruments never select a current valuation. Custody cash
+  is a ledger cross-check, never an additional asset. Evidence keys stay server-side.
+- `/rewards` keeps each native component separate. Known immutable event heads
+  produce earned, pending, redeemed and expired totals; snapshot differences never
+  imply earnings. Unknown amounts, incomplete membership and invalid chains withhold
+  totals. Typed balances partition by basis, period and source time precision;
+  legacy snapshots remain explicitly untyped. Dated posted activity uses exact sums,
+  a 90-day chart window and device-local dates/concealment. See `docs/rewards.md`.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
+- The amount-concealment toggle masks money, native units, chart scale labels
+  and tooltip values on this device. It preserves underlying data and chart
+  geometry; it is not a redacted sharing/export boundary. Restore it before
+  rendering amounts and keep its preference local to the device.
+- The date slider uses a bounded 90-day UTC viewport with edge panning and
+  keyboard navigation. Earlier/Later moves the viewport without changing the
+  selected dates. Default to 90D only when no valid preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
   and Screentime. Do not write filters into the URL or restore them from it.
 - Use the life-data catalog for category names, kinds, and icons. Do not
@@ -57,6 +96,22 @@ protects the site and every API route.
   tests, static checks, formatting checks, and the production build.
 
 ## Architecture rules
+
+- Interactive event markers use only this project's `MARKERS_DB` D1 binding
+  and `migrations/`. Creates carry a stable draft UUID for safe retries; reused
+  IDs with different content or deleted IDs conflict. Deletion retains only the
+  consumed ID to prevent stale creates from restoring deleted markers. The `/api/markers` CRUD interface checks revision predicates
+  atomically for updates/deletes and rejects foreign-origin writes. Never put
+  marker content in source, localStorage, the financial estate or another app's
+  resources. Missing storage is an explicit unavailable state.
+- Marker dates are UTC calendar labels. An optional inclusive end date creates
+  a range; points/ranges anchor to their containing chart buckets after exact
+  selected-date filtering. All markers remain accessible in the in-view list.
+- Concealment hides marker free text in labels, tooltips, accessible names and
+  lists, and disables the editor. Dates/relative geometry can remain visible.
+- D1 provisioning uses `scripts/cf-d1.py` and project-owned operator credentials.
+  Apply schema migrations under deployment approval before code requires them.
+  CI retains its Workers-only credential; it does not provision or migrate D1.
 
 - **Backend logic that exists to serve this site lives HERE** as SvelteKit
   server routes (`+page.server.ts`, `src/routes/api/*/+server.ts`) — it all
@@ -308,7 +363,9 @@ deploys target his Cloudflare account.
   shell caches. Never intercept API mutations or Cloudflare Access routes.
 - `readDashboard` stores successful JSON GETs in device-local CacheStorage. Offline
   reads use the saved snapshot immediately; weak connections get 750 ms before
-  fallback, with an 8-second request bound. Explicit refreshes require fresh data.
+  fallback. Finance cold reads and explicit refreshes allow 45 seconds for the
+  two bounded server phases and response transfer; other reads default to 8 seconds.
+  Explicit refreshes require fresh data.
   Saved snapshots show their save time. Errors, redirects, and login HTML cannot
   replace a successful snapshot. Clearing website data removes offline data.
 - Reconnect uses a full `/?online=1` navigation, bypassing the cached document so
@@ -317,3 +374,30 @@ deploys target his Cloudflare account.
 - Run the offline helper and service-worker regression tests with the normal test
   suite; verify the production build with browser networking disabled, not Vite dev
   (SvelteKit only registers the service worker in production).
+
+## Native widget devices
+
+- Networth owns `WIDGETS_DB` (`networth-widgets`), separate from financial
+  source storage. Its schema is in `migrations-widgets/`; provision with
+  `scripts/cf-d1.py` and apply migrations using the owning operator identity.
+- `/widgets` and `/api/widget-devices` require Cloudflare Access. Mutations also
+  require exact same-origin requests. The Access assertion header is checked
+  for presence as defense in depth, not represented as local JWT verification.
+- Only `/api/device/*` may bypass browser Access. It has an explicit allowlist:
+  GET session, GET snapshot and DELETE session. A native device generates a
+  random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
+  reaches the approval page. No Life Data, operator or browser credential goes
+  to native consumers. Public callers cannot stage or approve enrollment.
+- Pending enrollment expires in ten minutes. Exact retries preserve expiry;
+  conflicting identity and revoked fingerprints cannot be reactivated. The
+  owner may revoke one device; an offline cached snapshot cannot be remotely
+  erased until the device reconnects or its app is removed.
+- Widget balances reuse verified ledger selection and retain per-account source
+  dates. Snapshot fetch time is not collection time. The device API projects
+  only widget fields and rechecks revocation after slow source reads.
+- The native app and extension use the same configured App Group and separate
+  exact Ad Hoc profiles. `ios/justfile` exposes simulator checks, tests, and a
+  release archive through `scripts/sign-widgets.py`. Signing inputs come from
+  the caller's credential provider; the helper verifies both exported targets
+  and removes its temporary keychain and profile copies. Native enrollment is
+  device state and must be repeated on replacement phones.

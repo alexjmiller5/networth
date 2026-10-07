@@ -1,5 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as MarkerTooltip from '$lib/components/ui/tooltip';
+	import {
+		markerBuckets,
+		markerText,
+		markerLabelBounds,
+		assignLane,
+		type Marker
+	} from '$lib/finance/markers';
+	import { formatMoney, formatMoneyTick } from '$lib/finance/display';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
 	import { colorForSlot, needsNet } from '$lib/finance/chartStyle';
 	import {
@@ -15,7 +24,8 @@
 		Tooltip,
 		Legend,
 		Filler,
-		type ChartDataset
+		type ChartDataset,
+		type Plugin
 	} from 'chart.js';
 	import 'chartjs-adapter-dayjs-4';
 	import dayjs from 'dayjs';
@@ -36,6 +46,8 @@
 	);
 
 	interface Props {
+		markers?: Marker[];
+		hideAmounts?: boolean;
 		data: StackedSeries;
 		bucket?: Bucket;
 		kind?: 'area' | 'bar' | 'line';
@@ -56,8 +68,10 @@
 		iconComponent?: (key: string) => typeof IconHelp;
 	}
 	const {
+		markers = [],
 		data,
 		bucket = 'day',
+		hideAmounts = false,
 		kind = 'bar',
 		net = false,
 		legendKeys,
@@ -73,6 +87,85 @@
 
 	let canvas: HTMLCanvasElement;
 	let chart: Chart | null = null;
+	let markerLabels = $state<
+		{ key: number; x: number; top: number; left: number; width: number; events: Marker[] }[]
+	>([]);
+	const visibleMarkers = $derived(
+		markers.filter((m) => markerBuckets(m, data.dates, bucket) !== null)
+	);
+	const markerTooltip = (items: { dataIndex: number }[]) =>
+		visibleMarkers
+			.filter((m) => {
+				const bounds = markerBuckets(m, data.dates, bucket)!;
+				return items[0]?.dataIndex >= bounds.start && items[0]?.dataIndex <= bounds.end;
+			})
+			.map((m) => markerText(m, hideAmounts));
+	function markerPlugin(chartTheme: ReturnType<typeof readTheme>): Plugin {
+		let positions: typeof markerLabels = [];
+		const pixel = (c: Chart, i: number) =>
+			c.scales.x.getPixelForValue(dayjs(data.dates[i]).valueOf());
+		return {
+			id: 'eventMarkers',
+			afterLayout(c) {
+				const grouped = new Map<number, Marker[]>();
+				for (const marker of visibleMarkers) {
+					const i = markerBuckets(marker, data.dates, bucket)!.start;
+					grouped.set(i, [...(grouped.get(i) ?? []), marker]);
+				}
+				const placed: { lane: number; left: number; right: number }[] = [];
+				positions = [];
+				for (const [i, events] of [...grouped].sort((a, b) => a[0] - b[0])) {
+					const x = pixel(c, i);
+					if (x < c.chartArea.left || x > c.chartArea.right) continue;
+					const label =
+						(hideAmounts ? 'Hidden marker' : events[0].title) +
+						(events.length > 1 ? ` (+${events.length - 1})` : '');
+					c.ctx.save();
+					c.ctx.font = `12px ${getComputedStyle(c.canvas).fontFamily}`;
+					const { left, width } = markerLabelBounds(
+						x,
+						c.ctx.measureText(label).width,
+						c.chartArea.left,
+						c.chartArea.right
+					);
+					c.ctx.restore();
+					const lane = assignLane(placed, left - 4, left + width + 4);
+					placed.push({ lane, left: left - 4, right: left + width + 4 });
+					positions.push({ key: i, x, left, width, top: lane * 26 + 2, events });
+				}
+				markerLabels = positions.filter((p) => p.top < 78);
+			},
+			beforeDatasetsDraw(c) {
+				c.ctx.save();
+				c.ctx.fillStyle = chartTheme.mutedInk;
+				c.ctx.globalAlpha = 0.12;
+				const half =
+					data.dates.length > 1
+						? Math.abs(pixel(c, 1) - pixel(c, 0)) / 2
+						: (c.chartArea.right - c.chartArea.left) / 2;
+				for (const marker of visibleMarkers.filter((m) => m.end !== null)) {
+					const bounds = markerBuckets(marker, data.dates, bucket)!;
+					const left = Math.max(c.chartArea.left, pixel(c, bounds.start) - half);
+					const right = Math.min(c.chartArea.right, pixel(c, bounds.end) + half);
+					c.ctx.fillRect(left, c.chartArea.top, right - left, c.chartArea.bottom - c.chartArea.top);
+				}
+				c.ctx.restore();
+			},
+			afterDatasetsDraw(c) {
+				c.ctx.save();
+				c.ctx.strokeStyle = chartTheme.mutedInk;
+				c.ctx.lineWidth = 1;
+				c.ctx.setLineDash([4, 4]);
+				for (const p of positions) {
+					c.ctx.beginPath();
+					c.ctx.moveTo(p.x, p.top < 78 ? p.top + 24 : c.chartArea.top);
+					c.ctx.lineTo(p.x, c.chartArea.bottom);
+					c.ctx.stroke();
+				}
+				c.ctx.restore();
+			}
+		};
+	}
 
 	// Icons as tiny canvases: Chart.js draws image point styles at natural
 	// size, so pre-render at legend size; repaint (coalesced into one rAF)
@@ -126,16 +219,8 @@
 		};
 	}
 
-	const money = (v: number): string =>
-		(v === 0 ? 0 : v).toLocaleString('en-US', {
-			style: 'currency',
-			currency: 'USD',
-			maximumFractionDigits: 2
-		});
-	const moneyTick = (v: number): string =>
-		Math.abs(v) >= 1000
-			? `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
-			: money(v);
+	const money = (v: number): string => formatMoney(v, hideAmounts);
+	const moneyTick = (v: number): string => formatMoneyTick(v, hideAmounts);
 
 	const tooltipTitle = (items: { dataIndex: number }[]): string => {
 		const raw = data.dates[items[0]?.dataIndex ?? -1];
@@ -225,6 +310,9 @@
 					.concat(netDataset as never[]) as ChartDataset<'bar'>[]
 			},
 			options: {
+				layout: {
+					padding: { top: visibleMarkers.length ? Math.min(3, visibleMarkers.length) * 26 + 8 : 0 }
+				},
 				responsive: true,
 				maintainAspectRatio: false,
 				animation: false,
@@ -286,6 +374,7 @@
 						padding: 10,
 						itemSort: (a, b) => (b.parsed.y ?? 0) - (a.parsed.y ?? 0),
 						callbacks: {
+							beforeBody: markerTooltip,
 							title: tooltipTitle,
 							label: (item) => {
 								const key = data.series[item.datasetIndex]?.key;
@@ -308,7 +397,8 @@
 						}
 					}
 				}
-			}
+			},
+			plugins: [markerPlugin(chartTheme)]
 		});
 	}
 
@@ -331,13 +421,46 @@
 		void data;
 		void bucket;
 		void kind;
+		void hideAmounts;
+		void markers;
 		render();
 	});
 </script>
 
 <div class="relative w-full {heightClass}">
 	<canvas bind:this={canvas} aria-label="Financial series for the selected date range"></canvas>
+	<MarkerTooltip.Provider>
+		{#each markerLabels as position (position.key)}
+			<MarkerTooltip.Root ignoreNonKeyboardFocus={false}>
+				<MarkerTooltip.Trigger
+					class="absolute h-6 truncate rounded bg-card px-1 text-center text-xs text-foreground outline-offset-2 focus-visible:outline-2"
+					style={`left:${position.left}px;top:${position.top}px;width:${position.width}px`}
+					aria-label={position.events.map((m) => markerText(m, hideAmounts)).join('; ')}
+				>
+					{hideAmounts ? 'Hidden marker' : position.events[0].title}{position.events.length > 1
+						? ` (+${position.events.length - 1})`
+						: ''}
+				</MarkerTooltip.Trigger>
+				<MarkerTooltip.Content class="block max-h-60 max-w-xs overflow-y-auto break-words">
+					{#each position.events as marker (marker.id)}<p>
+							{markerText(marker, hideAmounts)}
+						</p>{/each}
+				</MarkerTooltip.Content>
+			</MarkerTooltip.Root>
+		{/each}
+	</MarkerTooltip.Provider>
 </div>
+
+{#if visibleMarkers.length}
+	<details class="mt-2 text-xs text-muted-foreground">
+		<summary class="cursor-pointer py-2">Markers in view ({visibleMarkers.length})</summary>
+		<ul class="max-h-40 space-y-1 overflow-y-auto py-2" aria-label="Markers in view">
+			{#each [...visibleMarkers].sort((a, b) => a.date.localeCompare(b.date)) as marker (marker.id)}
+				<li class="break-words">{markerText(marker, hideAmounts)}</li>
+			{/each}
+		</ul>
+	</details>
+{/if}
 
 <div
 	class="mt-3 flex max-h-48 flex-wrap justify-center gap-x-3 gap-y-1 overflow-y-auto"

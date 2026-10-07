@@ -2,7 +2,11 @@
 export async function readDashboard<T>(
 	url: string,
 	request: typeof fetch = fetch,
-	{ refresh = false, signal }: { refresh?: boolean; signal?: AbortSignal } = {}
+	{
+		refresh = false,
+		signal,
+		timeoutMs = 8000
+	}: { refresh?: boolean; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<{ data: T; savedAt: string | null }> {
 	signal?.throwIfAborted();
 	let cache: Cache | undefined;
@@ -65,7 +69,7 @@ export async function readDashboard<T>(
 			timeout = setTimeout(() => {
 				controller.abort();
 				reject(unavailable());
-			}, 8000);
+			}, timeoutMs);
 		})
 	]).finally(() => clearTimeout(timeout));
 	if (!saved || refresh) return network;
