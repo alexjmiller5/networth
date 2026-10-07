@@ -3,6 +3,7 @@
 // Runtime types generated with workerd@1.20260701.1 2026-07-06 nodejs_als
 interface __BaseEnv_Env {
 	MARKERS_DB: D1Database;
+	WIDGETS_DB: D1Database;
 	ASSETS: Fetcher;
 	LIFE_HUB_URL: "https://life-data.nqipomyrjb.workers.dev";
 	LIFE_HUB_TOKEN: string;

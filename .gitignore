@@ -25,3 +25,14 @@ vite.config.ts.timestamp-*
 
 # 1Password secrets manifest (op:// refs only) IS committed
 !.env.tpl
+
+# Implementation scratch
+.superpowers/
+
+# Native generated/build products
+/ios/*.xcodeproj/
+/ios/App/Info.plist
+/ios/App/*.entitlements
+/ios/Widgets/Info.plist
+/ios/Widgets/*.entitlements
+/ios/build/
