@@ -30,7 +30,8 @@ export function widgetBalances(
 			c.status === 'verified' &&
 			c.basis === 'money' &&
 			c.asOf !== null &&
-			Number.isFinite(Date.parse(c.asOf))
+			Number.isFinite(Date.parse(c.asOf)) &&
+			c.asOf.slice(0, 10) <= date
 	);
 	const amounts = new Map(
 		deriveBalances(txns, cards, date, date, eligible).series.map((s) => [s.key, s.data[0]])

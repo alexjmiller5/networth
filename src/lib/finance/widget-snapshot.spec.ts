@@ -86,3 +86,14 @@ it('rejects ambiguous identities instead of selecting the last row', () => {
 	expect(() => widgetBalances([account, account], [txn], [coverage], '2030-01-03')).toThrow();
 	expect(() => widgetBalances([account], [txn], [coverage, coverage], '2030-01-03')).toThrow();
 });
+
+it('never reports a source checkpoint from the future as current verified money', () => {
+	expect(
+		widgetBalances(
+			[account],
+			[txn],
+			[{ ...coverage, asOf: '2030-02-01T10:00:00Z' }],
+			'2030-01-03'
+		)[0]
+	).toMatchObject({ amount: null, availability: 'unavailable' });
+});

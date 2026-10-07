@@ -24,18 +24,18 @@ Financial selection remains server-side and reuses existing readers.
 ## Work
 
 - [ ] Add synthetic tests for `src/lib/finance/widget-snapshot.ts` and implement
-  the minimal projection over existing finance/rewards selectors.
+      the minimal projection over existing finance/rewards selectors.
 - [ ] Add the bounded device registry and enrollment routes under
-  `src/lib/server/widget-devices.ts` and `src/routes/api/device/`; test scope,
-  expiry, revocation and replay before implementation.
+      `src/lib/server/widget-devices.ts` and `src/routes/api/device/`; test scope,
+      expiry, revocation and replay before implementation.
 - [ ] Add the Access-protected enrollment/revocation page and the dedicated
-  Networth registry migration/resource declaration. Verify edge policy before
-  enabling the public device path.
+      Networth registry migration/resource declaration. Verify edge policy before
+      enabling the public device path.
 - [ ] Build `ios/` from the personal iOS template with snapshot logic tests,
-  secure enrollment, last-good storage and native widget configuration.
+      secure enrollment, last-good storage and native widget configuration.
 - [ ] Render and exercise every widget state in previews and the simulator;
-  mutation-test financial selection and enrollment guards.
+      mutation-test financial selection and enrollment guards.
 - [ ] Deploy through CI, verify authenticated and rejected device requests,
-  build the signed app and install through the supported paired-device flow.
+      build the signed app and install through the supported paired-device flow.
 - [ ] Complete physical widget/enrollment acceptance, preserve evidence in the
-  existing tracking task and remove temporary test instances and credentials.
+      existing tracking task and remove temporary test instances and credentials.
