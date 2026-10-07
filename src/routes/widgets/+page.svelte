@@ -15,22 +15,33 @@
 		devices = ((await response.json()) as { devices: WidgetDevice[] }).devices;
 	}
 	onMount(() => {
-		const params = new URLSearchParams(location.hash.slice(1));
-		const id = params.get('id'),
-			hash = params.get('hash');
-		if (id && hash) {
+		const capture = () => {
+			const params = new URLSearchParams(location.hash.slice(1));
+			const id = params.get('id'),
+				hash = params.get('hash');
+			if (!id || !hash) return;
 			candidate = { id, hash };
 			label = params.get('label') ?? 'My phone';
-		}
-		if (location.hash) history.replaceState(null, '', location.pathname);
-		readDevices().catch((e) => (error = e.message));
-		if (candidate) {
+			history.replaceState(null, '', location.pathname);
+			staged = false;
 			busy = true;
-			send('POST', { action: 'stage', ...candidate, label })
-				.then(() => (staged = true))
-				.catch((e) => (error = e.message))
-				.finally(() => (busy = false));
-		}
+			error = '';
+			notice = '';
+			send('POST', { action: 'stage', id, hash, label })
+				.then(() => {
+					if (candidate?.id === id) staged = true;
+				})
+				.catch((e) => {
+					if (candidate?.id === id) error = e.message;
+				})
+				.finally(() => {
+					if (candidate?.id === id) busy = false;
+				});
+		};
+		capture();
+		window.addEventListener('hashchange', capture);
+		readDevices().catch((e) => (error = e.message));
+		return () => window.removeEventListener('hashchange', capture);
 	});
 	async function send(method: string, body: unknown) {
 		const response = await fetch('/api/widget-devices', {
