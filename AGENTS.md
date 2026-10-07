@@ -6,7 +6,7 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance` and `/api/benefits` are the data paths. `LIFE_HUB_URL` is
+- `/api/finance`, `/api/benefits`, and `/api/investments` are the data paths. `LIFE_HUB_URL` is
   server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
@@ -60,6 +60,13 @@ protects the site and every API route.
 - Investment valuations require holdings and price history. Missing history,
   unreconciled accounts, and unavailable valuations remain explicit in
   coverage and cannot be presented as verified complete net worth.
+- `/investments` displays native instrument observations with exact decimal text.
+  Source dates, timestamps, currencies, and price clocks remain separate groups.
+  Validate complete correction membership before selecting heads; forks, cycles,
+  duplicate IDs, missing predecessors and cross-group edges suppress selection.
+  Paged pulls have no snapshot guard and are therefore display-only. Unknown
+  dates and unresolved instruments never select a current valuation. Custody cash
+  is a ledger cross-check, never an additional asset. Evidence keys stay server-side.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.

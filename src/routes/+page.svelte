@@ -280,6 +280,7 @@
 		</p>{/if}
 
 	<div class="flex flex-wrap items-center gap-2">
+		<Button href="/investments" variant="outline" class="min-h-9">Investments</Button>
 		<Button href="/benefits" variant="outline" class="min-h-9"
 			><IconHeartHandshake size={16} />Benefits</Button
 		>
