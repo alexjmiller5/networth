@@ -18,6 +18,9 @@ struct DashboardView: View {
                     Section("Connection") {
                         LabeledContent("Device",value:enrollment.label)
                         LabeledContent("Status",value:model.state?.rawValue.capitalized ?? "Checking")
+                        if model.busy {
+                            ProgressView(model.state == .active ? "Loading card balances…" : "Checking device approval…")
+                        }
                         if model.state != .active {
                             LabeledContent("Connection code",value:String(enrollment.fingerprint.prefix(8)).uppercased()).monospaced()
                             Button("Open approval page") { if let url=model.beginEnrollment() { openURL(url) } }

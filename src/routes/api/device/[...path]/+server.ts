@@ -36,7 +36,7 @@ const handle: RequestHandler = async (event) => {
 		}
 		if (device.state !== 'active')
 			return fail(403, 'Device approval is required or has expired or been revoked.');
-		const response = await financeGET(event);
+		const response = await financeGET(event, true);
 		if (!response.ok) return fail(502, 'The latest snapshot is unavailable.');
 		const estate = (await response.json()) as Estate;
 		const fetchedAt = new Date().toISOString();
