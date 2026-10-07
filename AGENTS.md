@@ -6,7 +6,7 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance`, `/api/benefits`, and `/api/investments` are the data paths. `LIFE_HUB_URL` is
+- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `LIFE_HUB_URL` is
   server configuration;
   `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
@@ -67,6 +67,12 @@ protects the site and every API route.
   Paged pulls have no snapshot guard and are therefore display-only. Unknown
   dates and unresolved instruments never select a current valuation. Custody cash
   is a ledger cross-check, never an additional asset. Evidence keys stay server-side.
+- `/rewards` keeps each native component separate. Known immutable event heads
+  produce earned, pending, redeemed and expired totals; snapshot differences never
+  imply earnings. Unknown amounts, incomplete membership and invalid chains withhold
+  totals. Typed balances partition by basis, period and source time precision;
+  legacy snapshots remain explicitly untyped. Dated posted activity uses exact sums,
+  a 90-day chart window and device-local dates/concealment. See `docs/rewards.md`.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Show every category;
   never aggregate the tail into an invented Other category.
