@@ -406,3 +406,16 @@ it('requires real database uniqueness even when a caller bypasses the domain pre
 		)
 	).toThrow(/UNIQUE/);
 });
+
+it('rejects a resolver that mutates the requested account scope before committing its receipt', async () => {
+	const invalid = new FinanceRunStore(storage(database), {
+		domainId: 'domain-1',
+		resolveScope: (_principal, ids) => {
+			ids.pop();
+			return ids.map((account_id) => ({ account_id, source_id: 'source-1' }));
+		}
+	});
+	await expect(invalid.launch('principal-1', request())).rejects.toThrow();
+	expect(database.prepare('SELECT count(*) n FROM finance_runs').get().n).toBe(0);
+	expect(database.prepare('SELECT count(*) n FROM finance_launch_receipts').get().n).toBe(0);
+});

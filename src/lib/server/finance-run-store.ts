@@ -133,6 +133,8 @@ export class FinanceRunStore {
 			account_ids: string[];
 			tracking_task_ids: string[];
 		};
+		Object.freeze(canonical.account_ids);
+		Object.freeze(canonical.tracking_task_ids);
 		return this.storage.transaction((sql) => {
 			const prior = sql.get<ReceiptRow>(
 				'SELECT * FROM finance_launch_receipts WHERE principal_id=? AND request_id=?',

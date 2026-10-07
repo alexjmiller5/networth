@@ -36,7 +36,8 @@ adapter must prove the same transaction boundaries before use.
   registry eligibility. Identical replay returns the original receipt even after
   claim/cancel or registry drift; changed payload conflicts.
 - Only a new request resolves eligible account/source identities. The exact
-  requested account set and tracking task IDs are frozen; missing, duplicate, or
+  requested account set and tracking task IDs are frozen before calling the
+  registry resolver, which cannot mutate them; missing, duplicate, or
   substituted resolved accounts reject the request. Absent service policy is
   unavailable. The domain is service configuration, never browser input.
 - A partial unique database index reserves the physical domain globally across
