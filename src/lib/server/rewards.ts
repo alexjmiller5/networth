@@ -53,22 +53,23 @@ const TABLES = {
 		'payload',
 		'supersedes_id',
 		'deleted_at'
-	],
-	redemption_valuations: [
-		'id',
-		'event_id',
-		'basis',
-		'comparable_amount',
-		'currency',
-		'comparable_scope',
-		'reward_value',
-		'rate_at_redemption',
-		'units_consumed',
-		'valued_at',
-		'supersedes_id',
-		'deleted_at'
 	]
 };
+
+const VALUATIONS = [
+	'id',
+	'event_id',
+	'basis',
+	'comparable_amount',
+	'currency',
+	'comparable_scope',
+	'reward_value',
+	'rate_at_redemption',
+	'units_consumed',
+	'valued_at',
+	'supersedes_id',
+	'deleted_at'
+];
 // Proved spend for an exact earning event: a ledger row cited as its evidence.
 const LINKS = { to_kind: 'reward_events', from_kind: 'txn', rel: 'evidence_of' };
 
@@ -105,22 +106,23 @@ export async function loadRewards(input: {
 	/** Loaded only when spend links exist; their ledger rows give the proved spend. */
 	estate: () => Promise<Pick<Estate, 'accounts' | 'txns'>>;
 }): Promise<RewardsView> {
-	const pulls = Object.entries(TABLES).map(([table, columns]) =>
-		pullNativeTable(input.hub, input.token, table, columns, input.fetch)
-	);
-	const [tables, edges, owner] = await Promise.all([
-		Promise.all(pulls),
-		pullNativeTable(
-			input.hub,
-			input.token,
-			'provenance',
-			['id', 'from_ref', 'to_ref', 'deleted_at'],
-			input.fetch,
-			LINKS
-		),
+	const pull = (table: string, columns: string[], where?: Record<string, string>) =>
+		pullNativeTable(input.hub, input.token, table, columns, input.fetch, where);
+	const [tables, owner] = await Promise.all([
+		Promise.all(Object.entries(TABLES).map(([table, columns]) => pull(table, columns))),
 		readRewardValues(input.db)
 	]);
-	const [programs, components, events, balances, terms, valuations] = tables;
+	const [programs, components, events, balances, terms] = tables;
+	// Workers allow six concurrent outbound connections. Links and valuations only matter
+	// for earn and redeem events, so they are a second, conditional wave.
+	const kinds = new Set(events.rows.filter((e) => e.deleted_at == null).map((e) => e.kind));
+	const none = { rows: [] as Record<string, unknown>[], complete: true };
+	const [edges, valuations] = await Promise.all([
+		kinds.has('earn')
+			? pull('provenance', ['id', 'from_ref', 'to_ref', 'deleted_at'], LINKS)
+			: none,
+		kinds.has('redeem') ? pull('redemption_valuations', VALUATIONS) : none
+	]);
 	const live = edges.rows.filter((e) => e.deleted_at == null);
 	const links: { event_id: string; amount: string; currency: string }[] = [];
 	if (live.length) {
@@ -144,7 +146,7 @@ export async function loadRewards(input: {
 	}
 	return {
 		...assembleRewards(programs.rows, components.rows, events.rows, balances.rows, {
-			complete: [...tables, edges].every((r) => r.complete),
+			complete: [...tables, edges, valuations].every((r) => r.complete),
 			today: input.today,
 			terms: terms.rows,
 			valuations: valuations.rows,

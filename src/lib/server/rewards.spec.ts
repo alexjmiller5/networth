@@ -53,6 +53,24 @@ const input = (fetch: typeof globalThis.fetch, estate = vi.fn()) => ({
 	today: '2030-05-10',
 	estate
 });
+it('reads links and valuations only when earn or redeem events exist', async () => {
+	const fetch = hub([]);
+	const saved = rows.reward_events;
+	rows.reward_events = [];
+	try {
+		await loadRewards(input(fetch));
+	} finally {
+		rows.reward_events = saved;
+	}
+	const tables = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).table);
+	expect(tables.sort()).toEqual([
+		'points_balances',
+		'reward_components',
+		'reward_events',
+		'reward_programs',
+		'reward_terms'
+	]);
+});
 it('does not read the ledger when no spend is linked', async () => {
 	const estate = vi.fn();
 	const view = await loadRewards(input(hub([]), estate));

@@ -580,6 +580,24 @@ describe('earning rate', () => {
 			'unavailable'
 		);
 	});
+	it('reports zero linked spend and forked event histories as unavailable', () => {
+		expect(
+			rate([earn('a', '100')], [{ event_id: 'a', amount: '0', currency: 'USD' }])
+		).toMatchObject({
+			status: 'unavailable',
+			reason: expect.stringMatching(/not positive/)
+		});
+		expect(
+			rate(
+				[
+					earn('a', '1', { event_key: 'k' }),
+					earn('b', '2', { event_key: 'k', supersedes_id: 'a' }),
+					earn('c', '3', { event_key: 'k', supersedes_id: 'a' })
+				],
+				[{ event_id: 'a', amount: '10', currency: 'USD' }]
+			)
+		).toMatchObject({ status: 'unavailable', reason: expect.stringMatching(/history/) });
+	});
 	it('counts a linked earlier version once through its corrected head', () =>
 		expect(
 			rate(

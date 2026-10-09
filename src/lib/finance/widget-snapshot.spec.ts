@@ -271,6 +271,66 @@ describe('widgetRewards', () => {
 				estimated: false
 			}
 		]));
+	it('names units of multi-unit programs and leaves observed zeros out of available rewards', () => {
+		const two = assembleRewards(
+			[{ id: 'p', label: 'Theater', provider: 'T', account_id: null }],
+			[
+				{
+					id: 'pts',
+					program_id: 'p',
+					component_key: 'pts',
+					label: 'Points',
+					unit: 'points',
+					role: 'redeemable',
+					currency: null
+				},
+				{
+					id: 'usd',
+					program_id: 'p',
+					component_key: 'usd',
+					label: 'Rewards',
+					unit: 'USD',
+					role: 'cash_reward',
+					currency: 'USD'
+				}
+			],
+			[],
+			[
+				{
+					id: 'a',
+					program: 'Theater',
+					points: 0,
+					scraped_at: '2030-05-01T00:00:00.000Z',
+					component_id: 'usd',
+					exact_amount: '0',
+					basis: 'available',
+					source_date: null,
+					source_as_of: null,
+					period_start: null,
+					period_end_exclusive: null,
+					supersedes_id: null
+				},
+				{
+					id: 'b',
+					program: 'Theater',
+					points: 40,
+					scraped_at: '2030-05-01T00:00:00.000Z',
+					component_id: 'pts',
+					exact_amount: '40',
+					basis: 'available',
+					source_date: null,
+					source_as_of: null,
+					period_start: null,
+					period_end_exclusive: null,
+					supersedes_id: null
+				}
+			],
+			{ complete: true, today }
+		);
+		const view = widgetRewards(two, [], [], today);
+		expect(view.rewards.map((r) => r.program)).toEqual(['Theater · Points']);
+		expect(view.expiry.map((e) => e.program)).toEqual(['Theater · Points', 'Theater · Rewards']);
+	});
 	it('lists expiry clocks with unknown kept explicit', () =>
 		expect(out.expiry.map((e) => [e.id, e.status, e.verified])).toEqual([
 			['m', 'unknown', false],

@@ -99,9 +99,11 @@ export function widgetRewards(
 	today: string,
 	categoriesAvailable = true
 ): WidgetRewards {
-	const units = rewards.programs.flatMap((p) =>
-		p.components.filter((c) => c.role !== 'qualifying').map((c) => ({ p, c }))
-	);
+	const units = rewards.programs.flatMap((p) => {
+		const own = p.components.filter((c) => c.role !== 'qualifying');
+		// A program with several units names each one, so rows never repeat a label.
+		return own.map((c) => ({ p, c, name: own.length > 1 ? `${p.label} · ${c.label}` : p.label }));
+	});
 	const order = { scheduled: 0, unknown: 1, none: 2 };
 	const cards = accounts.filter((a) => a.type === 'credit_card' && !a.closed);
 	const cardIds = new Set(cards.map((a) => a.id));
@@ -122,13 +124,14 @@ export function widgetRewards(
 	});
 	return {
 		rewards: units
-			.flatMap(({ p, c }) => {
+			.flatMap(({ c, name }) => {
 				const available = currentBalance(c, 'available');
-				if (!available) return [];
+				// Nothing to redeem: an observed zero stays on the dashboard, not in this list.
+				if (!available || available.amount === '0') return [];
 				return [
 					{
 						id: c.id,
-						program: p.label,
+						program: name,
 						label: c.label,
 						unit: c.unit,
 						amount: available.amount,
@@ -144,7 +147,7 @@ export function widgetRewards(
 				(a, b) => Number(b.usd ?? -1) - Number(a.usd ?? -1) || a.program.localeCompare(b.program)
 			),
 		expiry: units
-			.map(({ p, c }) => ({ id: c.id, program: p.label, unit: c.unit, ...c.expiry }))
+			.map(({ c, name }) => ({ id: c.id, program: name, unit: c.unit, ...c.expiry }))
 			.sort(
 				(a, b) =>
 					order[a.status] - order[b.status] ||

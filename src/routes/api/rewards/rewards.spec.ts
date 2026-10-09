@@ -48,7 +48,6 @@ it('uses the existing dedicated reader and fixed native projections', async () =
 		valuesUnavailable: true
 	});
 	const tables = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).table);
-	expect(tables).toEqual(
-		expect.arrayContaining(['reward_terms', 'redemption_valuations', 'provenance'])
-	);
+	expect(tables).toContain('reward_terms');
+	expect(tables).not.toContain('provenance');
 });
