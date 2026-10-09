@@ -34,6 +34,7 @@
 	import IconChartPie from '@tabler/icons-svelte/icons/chart-pie';
 	import IconGift from '@tabler/icons-svelte/icons/gift';
 	import IconActivity from '@tabler/icons-svelte/icons/activity';
+	import IconLockDollar from '@tabler/icons-svelte/icons/lock-dollar';
 	import {
 		PRESET_LABELS,
 		clampRange,
@@ -43,6 +44,7 @@
 	} from '$lib/finance/presets';
 	import {
 		accountLabel,
+		ASSET_CLASSES,
 		buildView,
 		clearControlParams,
 		FRIEND_PAID,
@@ -52,11 +54,13 @@
 		writeControls
 	} from '$lib/finance/controls';
 	import { accountGroup, type Bucket } from '$lib/finance/series';
-	import type { GroupBy, AccountCoverage } from '$lib/finance/types';
+	import type { Account, AssetClass, GroupBy, AccountCoverage } from '$lib/finance/types';
 	import type { Estate } from '$lib/finance/assemble';
 
 	let { data }: { data: Estate & { savedAt: string | null } } = $props();
-	const accounts = $derived(data.accounts);
+	// Noncash assets chart like balance-only accounts; snapshots saved before them have none.
+	const assets = $derived(data.assets ?? []);
+	const accounts = $derived([...data.accounts, ...assets]);
 	let markers = $state<Marker[]>([]);
 	let markersOpen = $state(false);
 	let markersLoaded = $state(false);
@@ -124,19 +128,15 @@
 	const viewState = $derived({ ...controls, dateStart: range.start, dateEnd: range.end });
 	const view = $derived(buildView(data.txns, accounts, categories, viewState, data.coverage));
 	const groupBy = $derived(controls.groupBy);
+	const groupKeys = (list: Account[]) =>
+		[...list].sort((a, b) => a.id.localeCompare(b.id)).map((a) => accountGroup(a, groupBy));
+	// Assets slot after every existing key so adding one never repaints another series.
 	const paletteKeys = $derived(
 		groupBy === 'category'
 			? [...categories]
 					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
 					.map((c) => c.name)
-			: [
-					...new Set(
-						[...accounts]
-							.sort((a, b) => a.id.localeCompare(b.id))
-							.map((a) => accountGroup(a, groupBy))
-					),
-					FRIEND_PAID
-				]
+			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets)])]
 	);
 	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
@@ -157,11 +157,17 @@
 		ira: 'IRA',
 		'401k': '401(k)',
 		cash: 'Cash',
-		stored_value: 'Stored value'
+		stored_value: 'Stored value',
+		security_deposit: 'Security deposits'
+	};
+	const classLabels: Record<AssetClass, string> = {
+		cash: 'Cash',
+		investments: 'Investments',
+		deposits: 'Deposits'
 	};
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
-		if (groupBy === 'asset') return key === 'cash' ? 'Cash' : 'Investments';
+		if (groupBy === 'asset') return classLabels[key as AssetClass] ?? key;
 		start = start < viewState.dateStart ? viewState.dateStart : start;
 		end = end > viewState.dateEnd ? viewState.dateEnd : end;
 		const account = accounts.find((a) => a.id === key);
@@ -181,20 +187,26 @@
 			? category.iconUrl
 			: undefined;
 	}
+	/** Latest principal event on or before the shown end for the deposits behind a key. */
+	function depositAsOf(key: string): string | null | undefined {
+		const ids = new Set(assets.filter((a) => accountGroup(a, groupBy) === key).map((a) => a.id));
+		if (!ids.size) return undefined;
+		return (
+			data.txns.filter((t) => ids.has(t.account_id ?? '') && t.date <= viewState.dateEnd).at(-1)
+				?.date ?? null
+		);
+	}
 	function iconComponent(key: string) {
-		if (groupBy === 'asset') return key === 'cash' ? IconCash : IconChartPie;
+		if (key === FRIEND_PAID) return IconArrowsDownUp;
+		if (groupBy === 'asset')
+			return key === 'cash' ? IconCash : key === 'deposits' ? IconLockDollar : IconChartPie;
+		if (groupBy !== 'category' && depositAsOf(key) !== undefined) return IconLockDollar;
 		if (
 			(groupBy === 'account' && accounts.find((a) => a.id === key)?.type === 'cash') ||
 			(groupBy === 'type' && key === 'cash')
 		)
 			return IconCash;
-		return groupBy === 'category'
-			? IconHelp
-			: key === FRIEND_PAID
-				? IconArrowsDownUp
-				: groupBy === 'bank'
-					? IconBuildingBank
-					: IconWallet;
+		return groupBy === 'category' ? IconHelp : groupBy === 'bank' ? IconBuildingBank : IconWallet;
 	}
 	function toggleSeries(key: string): void {
 		controls.hidden = toggleHidden(
@@ -261,7 +273,7 @@
 				class="text-2xl font-semibold tabular-nums"
 				title={view.isFlow
 					? 'Sum of the visible categorized amounts in this date range, using your shares and excluding internal transfers.'
-					: 'Sum of the visible verified transaction ledgers. Credit-card debt subtracts from the subtotal.'}
+					: 'Sum of the visible verified transaction ledgers and refundable deposits. Credit-card debt subtracts from the subtotal.'}
 			>
 				{!view.isFlow && !view.summary.some((row) => row.value !== null)
 					? 'Unavailable'
@@ -386,29 +398,30 @@
 						class="min-h-9 w-52 justify-between font-normal"
 						aria-label="Asset classes"
 					>
-						<IconChartPie size={16} />{controls.assetClasses.length === 2
-							? 'Cash & investments'
-							: controls.assetClasses[0] === 'cash'
-								? 'Cash'
-								: 'Investments'}<IconChevronDown size={16} />
+						<IconChartPie size={16} />{controls.assetClassFilter.length === ASSET_CLASSES.length
+							? 'All asset classes'
+							: controls.assetClassFilter
+									.map((c, i) => (i ? classLabels[c].toLowerCase() : classLabels[c]))
+									.join(' & ')}<IconChevronDown size={16} />
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content>
-				{#each ['cash', 'investments'] as const as asset (asset)}
+				{#each ASSET_CLASSES as asset (asset)}
 					<DropdownMenu.CheckboxItem
-						checked={controls.assetClasses.includes(asset)}
+						checked={controls.assetClassFilter.includes(asset)}
 						closeOnSelect={false}
 						onCheckedChange={(checked) => {
 							const next = checked
-								? [...controls.assetClasses, asset]
-								: controls.assetClasses.filter((a) => a !== asset);
-							controls.assetClasses = next.length ? next : ['cash', 'investments'];
-						}}>{asset === 'cash' ? 'Cash' : 'Investments'}</DropdownMenu.CheckboxItem
+								? ASSET_CLASSES.filter((a) => a === asset || controls.assetClassFilter.includes(a))
+								: controls.assetClassFilter.filter((a) => a !== asset);
+							controls.assetClassFilter = next.length ? next : [...ASSET_CLASSES];
+						}}>{classLabels[asset]}</DropdownMenu.CheckboxItem
 					>
 				{/each}
 				<p class="max-w-64 px-2 py-1 text-xs text-muted-foreground">
-					Cash includes balances outside investment accounts, net of credit-card debt.
+					Cash includes balances outside investment accounts, net of credit-card debt. Deposits are
+					refundable principal someone else holds; they count in net worth but are not spendable.
 				</p>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
@@ -722,6 +735,9 @@
 						{#if account?.closed}Closed ·
 						{/if}
 						{#if view.isFlow}{row.value === null ? 'No categorized activity' : view.title}
+						{:else if depositAsOf(row.key) !== undefined}Not spendable{depositAsOf(row.key)
+								? ` · as of ${depositAsOf(row.key)}`
+								: ''}
 						{:else if row.value === null}{coverage ? coverageText(coverage).label : 'Not verified'}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
@@ -764,7 +780,9 @@
 		<span
 			>{incomplete
 				? 'Incomplete historical coverage. Charts include verified monetary accounts; current closed-account balances may appear in Overview.'
-				: 'Balances include verified monetary accounts.'}</span
+				: 'Balances include verified monetary accounts.'}{assets.length
+				? ' Deposits come from evidenced principal events.'
+				: ''}</span
 		>
 		<Button variant="outline" class="min-h-9" onclick={refresh} disabled={refreshing}
 			><IconRefresh size={16} class={refreshing ? 'animate-spin' : ''} />{refreshing
@@ -773,7 +791,7 @@
 		>
 	</div>
 	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
-	<FinanceRunCard {accounts} />
+	<FinanceRunCard accounts={data.accounts} />
 	{#if markersError}<p class="text-sm text-destructive" role="alert">
 			{markersError}
 			<button
@@ -803,7 +821,7 @@
 			{/each}
 		</ul>
 	</details>
-	{#if controls.balanceSources.includes('rewards') && controls.assetClasses.includes('cash')}
+	{#if controls.balanceSources.includes('rewards') && controls.assetClassFilter.includes('cash')}
 		<div>
 			<p class="mb-2 text-xs text-muted-foreground">
 				Points · all programs · latest snapshots on or before {viewState.dateEnd}

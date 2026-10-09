@@ -1,4 +1,5 @@
 import { assetClass } from './series';
+import { refundablePrincipal, type PrincipalEvent } from './refundable-principal';
 // Join raw finance facts with their judgment layer. Spending uses dated
 // shares; monetary balances use ledger effects verified against source gates.
 import type {
@@ -25,6 +26,10 @@ export interface EstateTables {
 	venmo_statement_lines: HubRow[];
 	points: HubRow[];
 	txns: Record<string, HubRow[]>;
+	/** Noncash refundable assets, their dated principal events and evidence_of edges. */
+	assets?: HubRow[];
+	asset_events?: HubRow[];
+	asset_evidence?: HubRow[];
 }
 
 export interface Estate {
@@ -33,6 +38,8 @@ export interface Estate {
 	categories: Category[];
 	points: PointsBalance[];
 	coverage: AccountCoverage[];
+	/** Balance-only noncash assets; their ledger rows are internal txns. Not reconciled accounts. */
+	assets: Account[];
 }
 
 const live = (r: HubRow): boolean => r.deleted_at == null;
@@ -162,6 +169,7 @@ export function assemble(t: EstateTables): Estate {
 	for (const o of t.overlay.filter(live)) overlay.set(`${str(o.source)}:${str(o.source_id)}`, o);
 
 	const shares = new Map<string, TxnShare[]>();
+	const shareById = new Map<string, { parent: string; share: TxnShare }>();
 	const standalone: Txn[] = [];
 	for (const s of t.shares.filter(live)) {
 		if ((s.source == null) !== (s.source_id == null))
@@ -191,6 +199,7 @@ export function assemble(t: EstateTables): Estate {
 			const list = shares.get(key) ?? [];
 			list.push(share);
 			shares.set(key, list);
+			if (s.id != null) shareById.set(id(s.id), { parent: key, share });
 		}
 	}
 
@@ -203,14 +212,13 @@ export function assemble(t: EstateTables): Estate {
 		statements.set(key, list);
 	}
 	const txns: Txn[] = [];
-	const txnKeys = new Set<string>();
+	const txnByKey = new Map<string, Txn>();
 	for (const [source, rows] of Object.entries(t.txns)) {
 		for (const r of rows.filter(live)) {
 			const a = accountOf.get(str(r.account_id));
 			if (!a || a.source !== source) throw new Error('Invalid finance account reference');
 			const key = `${source}:${id(r.id)}`;
-			if (txnKeys.has(key)) throw new Error('Duplicate finance transaction');
-			txnKeys.add(key);
+			if (txnByKey.has(key)) throw new Error('Duplicate finance transaction');
 			const o = overlay.get(key);
 			const amount = num(r.amount);
 			const synthetic = flag(r.synthetic);
@@ -277,10 +285,12 @@ export function assemble(t: EstateTables): Estate {
 				shares.delete(key);
 			}
 			txns.push(txn);
+			txnByKey.set(key, txn);
 		}
 	}
 	if (shares.size) throw new Error('Finance share parent is missing');
-	txns.push(...standalone);
+	const noncash = noncashAssets(t, txnByKey, shareById, accountOf);
+	txns.push(...standalone, ...noncash.ledger);
 	txns.sort((a, b) => a.date.localeCompare(b.date));
 
 	const latestRun = new Map<string, HubRow>();
@@ -407,5 +417,110 @@ export function assemble(t: EstateTables): Estate {
 		estValue: p.est_value == null ? null : num(p.est_value),
 		scrapedAt: timestamp(p.scraped_at)
 	}));
-	return { accounts, txns, categories, points, coverage };
+	return { accounts, txns, categories, points, coverage, assets: noncash.assets };
+}
+
+const ASSET_KINDS = ['security_deposit'];
+
+/** Map Life Data noncash assets onto balance-only ledgers and mark the principal
+ * their events link inside raw rows or owned shares, so flows leave only that out.
+ * refundablePrincipal validates the whole history; evidence keys never leave here. */
+function noncashAssets(
+	t: EstateTables,
+	txnByKey: Map<string, Txn>,
+	shareById: Map<string, { parent: string; share: TxnShare }>,
+	accountOf: Map<string, Account>
+): { assets: Account[]; ledger: Txn[] } {
+	const assets: Account[] = (t.assets ?? []).filter(live).map((r) => {
+		if (!ASSET_KINDS.includes(str(r.kind))) throw new Error('Invalid noncash asset kind');
+		return {
+			id: id(r.id),
+			bank: id(r.name),
+			name: str(r.name),
+			type: str(r.kind) as AccountType,
+			currency: str(r.currency),
+			closed: false
+		};
+	});
+	const currencyOf = new Map(assets.map((a) => [a.id, a.currency!]));
+	const evidence = new Map<string, string>();
+	for (const p of (t.asset_evidence ?? []).filter(live))
+		evidence.set(str(p.to_ref), `${str(p.from_kind)}:${str(p.from_ref)}`);
+	const targets = new Map<
+		string,
+		{ amountMinor: number; currency: string; owned: TxnShare | Txn }
+	>();
+	const events: PrincipalEvent[] = (t.asset_events ?? []).filter(live).map((r) => {
+		let allocationId: string | null = null;
+		if (r.source != null || r.source_id != null) {
+			const parent = `${str(r.source)}:${str(r.source_id)}`;
+			const txn = txnByKey.get(parent);
+			if (!txn) throw new Error('Noncash asset leg is missing');
+			const link = r.share_id == null ? undefined : shareById.get(str(r.share_id));
+			if (r.share_id != null && link?.parent !== parent)
+				throw new Error('Noncash asset share is not part of its leg');
+			// A split row's cash belongs to its shares; never link the whole parent.
+			if (r.share_id == null && txn.shares) throw new Error('Split leg needs its owned share');
+			const owned = link?.share ?? txn;
+			allocationId = link ? `share:${str(r.share_id)}` : `txn:${parent}`;
+			targets.set(allocationId, {
+				amountMinor: Math.round(owned.amount * 100),
+				currency: accountOf.get(txn.account_id!)?.currency ?? '',
+				owned
+			});
+		}
+		return {
+			id: id(r.id),
+			assetId: str(r.asset_id),
+			currency: currencyOf.get(str(r.asset_id)) ?? '',
+			date: date(r.date),
+			kind: str(r.kind) as PrincipalEvent['kind'],
+			amountMinor: num(r.amount),
+			allocationId,
+			evidenceRef: evidence.get(str(r.id)) ?? ''
+		};
+	});
+	const principal = [...currencyOf].map(([assetId, currency]) => ({ id: assetId, currency }));
+	const allocations = [...targets].map(([allocationId, a]) => ({
+		id: allocationId,
+		currency: a.currency,
+		amountMinor: a.amountMinor
+	}));
+	const dates = [...new Set(events.map((e) => e.date))].sort();
+	const { activity } = refundablePrincipal(
+		principal,
+		events,
+		allocations,
+		dates[0] ?? '1970-01-01'
+	);
+	for (const [allocationId, a] of targets) {
+		const linked = a.amountMinor - activity[allocationId];
+		if (linked) a.owned.principal = linked / 100;
+	}
+	// Closing balances as of each event date become one internal ledger row per change.
+	const ledger: Txn[] = [];
+	const previous = new Map<string, number>();
+	for (const day of dates) {
+		const { balances } = refundablePrincipal(principal, events, allocations, day);
+		for (const asset of assets) {
+			const change = balances[asset.id] - (previous.get(asset.id) ?? 0);
+			previous.set(asset.id, balances[asset.id]);
+			// ponytail: dollars only, like every other balance here; other currencies stay unavailable.
+			if (!change || asset.currency !== 'USD') continue;
+			ledger.push({
+				source: null,
+				source_id: null,
+				account_id: asset.id,
+				date: day,
+				amount: change / 100,
+				balanceAmount: change / 100,
+				internal: true,
+				excluded: false,
+				synthetic: false,
+				standalone: false
+			});
+		}
+	}
+	for (const asset of assets) asset.closed = !previous.get(asset.id);
+	return { assets, ledger };
 }
