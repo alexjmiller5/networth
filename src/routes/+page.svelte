@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import IconFlag from '@tabler/icons-svelte/icons/flag';
 	import MarkersDialog from '$lib/components/MarkersDialog.svelte';
+	import FinanceRunCard from '$lib/components/FinanceRunCard.svelte';
 	import { visibleMarkers, type Marker, type MarkerInput } from '$lib/finance/markers';
 	import { formatMoney, formatUnits, formatCoverage } from '$lib/finance/display';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
@@ -772,6 +773,7 @@
 		>
 	</div>
 	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
+	<FinanceRunCard {accounts} />
 	{#if markersError}<p class="text-sm text-destructive" role="alert">
 			{markersError}
 			<button

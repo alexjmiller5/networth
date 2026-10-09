@@ -10,3 +10,6 @@ bun.lockb
 
 # Generated (wrangler types rewrites it during `just check`)
 worker-configuration.d.ts
+
+# Local Python tool caches (host/)
+.pytest_cache/

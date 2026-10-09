@@ -136,6 +136,60 @@ personal data. Version preview URLs are disabled. Protect every application host
 verify unauthenticated `/api/finance` requests are challenged before the
 Worker runs. The repository is shareable; the financial dataset is not.
 
+## Finance review runs
+
+The dashboard's Finance review card queues a review for the selected open
+accounts. An enrolled host computer picks it up within seconds, opens a Herdr
+tab and starts an agent with the review instruction (Claude first, Codex if
+Claude cannot start or has no usage left). The card shows the status, the tab
+and agent, and Cancel. Only one run can be active; a second Run is refused.
+
+Run storage is this Worker's `FINANCE_RUNS_DB` (`networth-finance-runs`,
+schema in `migrations-finance-runs/`). Provision it like the other databases
+with `scripts/cf-d1.py`, then apply migrations with
+`bunx wrangler d1 migrations apply networth-finance-runs --remote`.
+Cloudflare Access must bypass exactly the host routes:
+`--public-path /api/finance-host/v1/claim --public-path '/api/finance-host/v1/runs/*'`
+next to the existing `--pwa --public-path '/api/device/*'` flags of
+`scripts/cf-access.py`.
+
+### Installing the host
+
+The host is `host/`: a Python package (`networth-host`) with a flake and a
+nix-darwin module. It only makes outbound HTTPS requests. Install it on a Mac
+that runs Herdr and the agent CLIs:
+
+```nix
+inputs.networth-host.url = "github:alexjmiller5/networth?dir=host";
+# modules = [ inputs.networth-host.darwinModules.default ];
+services.networth-host = {
+  enable = true;
+  user = "<login user>";
+  url = "https://<your networth site>";
+  herdrWorkspace = "w1"; # optional
+};
+```
+
+Then enroll once, in the login session (the login Keychain is locked over
+ssh; on a headless Mac use `launchctl submit -l networth-enroll -o <log> -e
+<log> -- /run/current-system/sw/bin/networth-host enroll` and read the URL
+from the log):
+
+```sh
+networth-host enroll --label "Mac mini"
+```
+
+It saves a random credential in the login Keychain, prints an approval link
+and waits. Open the link (it lands on `/widgets` behind Access), check the
+code and approve. The receipt is `~/.local/state/networth-host/enrollment.json`.
+Revoke the host on `/widgets`; enroll again on a replacement machine. The
+`networth-host` launchd agent then long-polls the site and logs to
+`~/.local/state/networth-host/networth-host.log`. The agent finishes a run with
+`networth-host report --run-id <id> --status done|failed|canceled --summary
+"<text>"`, which queues the report for the daemon to deliver.
+
+Host tests: `cd host && uv run --no-project --with pytest pytest -q tests`.
+
 ## Offline use
 
 Open the dashboard online once and let it finish loading. Later launches can use

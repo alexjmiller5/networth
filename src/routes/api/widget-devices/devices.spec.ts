@@ -24,7 +24,8 @@ const id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa',
 let hash: string;
 beforeEach(async () => {
 	sqlite = new DatabaseSync(':memory:');
-	sqlite.exec(readFileSync('migrations-widgets/0001_devices.sql', 'utf8'));
+	for (const m of ['0001_devices', '0002_device_kind'])
+		sqlite.exec(readFileSync(`migrations-widgets/${m}.sql`, 'utf8'));
 	const db = {
 		prepare(sql: string) {
 			const stmt = sqlite.prepare(sql);
@@ -131,4 +132,21 @@ it('withholds a snapshot if the owner revokes access while financial sources are
 		return new Response(JSON.stringify({ accounts: [], txns: [], coverage: [] }));
 	});
 	expect((await deviceGET(event('GET', undefined, { token, path: 'snapshot' }))).status).toBe(403);
+});
+
+it('enrolls a finance host that cannot read widget snapshots', async () => {
+	vi.mocked(financeGET).mockClear();
+	expect(
+		(await POST(event('POST', { action: 'stage', id, hash, label: 'Mac mini', kind: 'host' })))
+			.status
+	).toBe(201);
+	expect(
+		(await POST(event('POST', { action: 'stage', id, hash, label: 'x', kind: 'root' }))).status
+	).toBe(400);
+	await approve();
+	expect(await (await GET(event('GET'))).json()).toMatchObject({ devices: [{ id, kind: 'host' }] });
+	const session = await deviceGET(event('GET', undefined, { token }));
+	expect(await session.json()).toMatchObject({ state: 'active', scope: 'finance-host' });
+	expect((await deviceGET(event('GET', undefined, { token, path: 'snapshot' }))).status).toBe(403);
+	expect(financeGET).not.toHaveBeenCalled();
 });
