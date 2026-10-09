@@ -134,53 +134,43 @@
 				</li>
 			{/each}
 		</ul>{/if}
-	<div class="mt-4 overflow-x-auto">
-		<table class="w-full text-left text-sm">
-			<thead class="text-xs text-muted-foreground">
-				<tr
-					><th class="py-2 pr-3 font-medium">Account</th><th class="py-2 pr-3 font-medium"
-						>Security</th
-					><th class="py-2 pr-3 font-medium">Source</th><th class="py-2 pr-3 font-medium">Symbol</th
-					><th class="py-2"><span class="sr-only">Actions</span></th></tr
-				>
-			</thead>
-			<tbody>
-				{#each mappings as m (`${m.account_id}:${m.security_id}`)}
-					<tr class="border-t">
-						<td class="py-2 pr-3 break-all">{m.account_id}</td>
-						<td class="py-2 pr-3 break-all">{m.security_id}</td>
-						<td class="py-2 pr-3" title={PROVIDERS[m.provider]}>{SHORT[m.provider]}</td>
-						<td class="py-2 pr-3">{m.symbol ?? '-'}</td>
-						<td class="flex justify-end gap-1 py-1">
-							<Button
-								variant="ghost"
-								size="icon"
-								class="size-9"
-								aria-label={`Edit ${m.account_id} ${m.security_id}`}
-								onclick={() =>
-									(draft = {
-										account_id: m.account_id,
-										security_id: m.security_id,
-										provider: m.provider,
-										symbol: m.symbol ?? '',
-										revision: m.revision
-									})}><IconPencil size={16} /></Button
-							>
-							<Button
-								variant="ghost"
-								size="icon"
-								class="size-9"
-								aria-label={`Remove ${m.account_id} ${m.security_id}`}
-								onclick={() => remove(m)}><IconTrash size={16} /></Button
-							>
-						</td>
-					</tr>
-				{:else}
-					<tr><td colspan="5" class="py-3 text-muted-foreground">No price sources yet.</td></tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<ul class="mt-4 divide-y border-y text-sm">
+		{#each mappings as m (`${m.account_id}:${m.security_id}`)}
+			<li class="flex items-center justify-between gap-2 py-2">
+				<div class="min-w-0">
+					<p class="font-medium break-words">{m.security_id} · {m.account_id}</p>
+					<p class="text-xs text-muted-foreground" title={PROVIDERS[m.provider]}>
+						{SHORT[m.provider]}{m.symbol ? ` · ${m.symbol}` : ''}
+					</p>
+				</div>
+				<div class="flex shrink-0 gap-1">
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-9"
+						aria-label={`Edit ${m.account_id} ${m.security_id}`}
+						onclick={() =>
+							(draft = {
+								account_id: m.account_id,
+								security_id: m.security_id,
+								provider: m.provider,
+								symbol: m.symbol ?? '',
+								revision: m.revision
+							})}><IconPencil size={16} /></Button
+					>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-9"
+						aria-label={`Remove ${m.account_id} ${m.security_id}`}
+						onclick={() => remove(m)}><IconTrash size={16} /></Button
+					>
+				</div>
+			</li>
+		{:else}
+			<li class="py-3 text-muted-foreground">No price sources yet.</li>
+		{/each}
+	</ul>
 	<form class="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]" onsubmit={save}>
 		<Input
 			aria-label="Account id"
