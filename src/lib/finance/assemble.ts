@@ -422,7 +422,7 @@ export function assemble(t: EstateTables): Estate {
 
 const ASSET_KINDS = ['security_deposit'];
 
-/** Map Life Data noncash assets onto balance-only ledgers and mark the principal
+/** Map Soma noncash assets onto balance-only ledgers and mark the principal
  * their events link inside raw rows or owned shares, so flows leave only that out.
  * refundablePrincipal validates the whole history; evidence keys never leave here. */
 function noncashAssets(

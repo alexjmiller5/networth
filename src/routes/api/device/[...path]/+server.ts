@@ -72,15 +72,15 @@ async function readWidgetRewards(
 	estate: Promise<Estate | null>
 ): Promise<WidgetRewards | null> {
 	const env = { ...privateEnv, ...event.platform?.env } as {
-		LIFE_HUB_URL?: string;
-		LIFE_HUB_TOKEN?: string;
+		SOMA_HUB_URL?: string;
+		SOMA_HUB_TOKEN?: string;
 	};
-	const hub = env.LIFE_HUB_URL?.replace(/\/$/, '');
-	if (!hub || !env.LIFE_HUB_TOKEN) return null;
+	const hub = env.SOMA_HUB_URL?.replace(/\/$/, '');
+	if (!hub || !env.SOMA_HUB_TOKEN) return null;
 	try {
 		const rewards = await loadRewards({
 			hub,
-			token: env.LIFE_HUB_TOKEN,
+			token: env.SOMA_HUB_TOKEN,
 			fetch: event.fetch,
 			db: event.platform?.env.MARKERS_DB,
 			today,

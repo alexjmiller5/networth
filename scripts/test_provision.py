@@ -18,7 +18,7 @@ class HubTokenTest(unittest.TestCase):
                 subprocess.CompletedProcess([], 0, json.dumps({"token": "test-token", "scopes": "tables:read"}), ""),
             ]
             self.assertEqual(provision.mint_hub_token(), "test-token")
-            self.assertEqual(run.call_args.args[0], ["life", "token", "create", "networth", "--scopes", "tables:read"])
+            self.assertEqual(run.call_args.args[0], ["soma", "token", "create", "networth", "--scopes", "tables:read"])
             run.reset_mock()
             run.side_effect = [subprocess.CompletedProcess([], 0, '[{"name":"networth","revoked_at":null}]', "")]
             with self.assertRaises(RuntimeError):
@@ -32,19 +32,19 @@ class HubTokenTest(unittest.TestCase):
             (tools / 'op').write_text('#!/bin/sh\nshift 3\nexec "$@"\n')
             (tools / 'bunx').write_text(
                 '#!/usr/bin/env python3\nimport json, os, sys\n'
-                'value = os.environ["LIFE_HUB_TOKEN"]\n'
+                'value = os.environ["SOMA_HUB_TOKEN"]\n'
                 'assert value not in " ".join(sys.argv)\n'
-                'assert sys.stdin.read() in (value, "LIFE_HUB_TOKEN=" + value + "\\n")\n'
+                'assert sys.stdin.read() in (value, "SOMA_HUB_TOKEN=" + value + "\\n")\n'
                 'print(json.dumps(sys.argv[1:]))\n'
             )
             for path in tools.iterdir():
                 path.chmod(0o700)
             env = {**os.environ, 'PATH': f'{directory}:{os.environ["PATH"]}'}
             for value in ('', 'CHANGEME', 'op://unresolved/reference', 'invalid\nvalue'):
-                result = subprocess.run(['bash', str(script), '--deploy'], env={**env, 'LIFE_HUB_TOKEN': value}, capture_output=True, text=True)
+                result = subprocess.run(['bash', str(script), '--deploy'], env={**env, 'SOMA_HUB_TOKEN': value}, capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, '')
-            result = subprocess.run(['bash', str(script), '--deploy', '--dry-run'], env={**env, 'LIFE_HUB_TOKEN': 'fixture-only'}, capture_output=True, text=True)
+            result = subprocess.run(['bash', str(script), '--deploy', '--dry-run'], env={**env, 'SOMA_HUB_TOKEN': 'fixture-only'}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout), ['wrangler', 'deploy', '--secrets-file', '/dev/stdin', '--dry-run'])
 

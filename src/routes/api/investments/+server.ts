@@ -41,11 +41,11 @@ const TABLES = {
 };
 export const GET: RequestHandler = async ({ platform, fetch }) => {
 	const env = { ...privateEnv, ...platform?.env } as {
-		LIFE_HUB_URL?: string;
-		LIFE_HUB_TOKEN?: string;
+		SOMA_HUB_URL?: string;
+		SOMA_HUB_TOKEN?: string;
 	};
-	const hub = env.LIFE_HUB_URL?.replace(/\/$/, '');
-	const token = env.LIFE_HUB_TOKEN;
+	const hub = env.SOMA_HUB_URL?.replace(/\/$/, '');
+	const token = env.SOMA_HUB_TOKEN;
 	if (!hub || !token) throw error(503, 'Investment observations are not configured yet.');
 	try {
 		const [instruments, observations] = await Promise.all(

@@ -3,7 +3,7 @@ import { GET } from './+server';
 const event = (fetch: typeof globalThis.fetch) =>
 	({
 		fetch,
-		platform: { env: { LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'synthetic' } }
+		platform: { env: { SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'synthetic' } }
 	}) as unknown as Parameters<typeof GET>[0];
 it('preserves legacy snapshots when typed tables are not yet available', async () => {
 	const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {

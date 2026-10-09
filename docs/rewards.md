@@ -1,7 +1,7 @@
 # Native reward views
 
 `/rewards` reads programs, immutable unit components, source event versions, balance
-observations, terms and redemption valuations through the dedicated Life Data reader.
+observations, terms and redemption valuations through the dedicated Soma reader.
 The application never invents account identities, reward units, earning history,
 expiry dates or cash value from a balance.
 
@@ -47,7 +47,7 @@ device; the URL stays clean.
 The per-program dollars-per-unit value is dashboard state in Networth's own
 `MARKERS_DB` (`reward_values`, `migrations/0002_reward_values.sql`), edited on
 `/rewards` and served by `/api/reward-values` (Access, same-origin JSON writes,
-revision compare-and-set). It never enters Life Data or git, and it only labels
+revision compare-and-set). It never enters Soma or git, and it only labels
 estimates; frozen redemption valuations stay as published.
 
 Unknown stays an explicit diagnostic everywhere. Evidence locators and credentials

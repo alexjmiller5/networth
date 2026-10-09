@@ -1,13 +1,13 @@
 # Benefit observations
 
 `/benefits` shows provider-native benefit plans and dated observations from
-`/api/benefits`. The server uses the existing Networth `LIFE_HUB_URL` and
-`LIFE_HUB_TOKEN` service configuration, with read-only `tables:read` access.
+`/api/benefits`. The server uses the existing Networth `SOMA_HUB_URL` and
+`SOMA_HUB_TOKEN` service configuration, with read-only `tables:read` access.
 No resource, credential, or data-write path is added.
 
 The endpoint requests only `benefit_plans` and `benefit_snapshots`, with fixed
 column allowlists. It requests the supported complete-table response initially, then follows any
-returned Life rows-pull `next_cursor` / `after` with bounded 200-row pages,
+returned Soma rows-pull `next_cursor` / `after` with bounded 200-row pages,
 uses one deadline per table, and rejects redirects, malformed pages, and
 nonadvancing cursors. A later-page failure rejects the whole result. Required
 source evidence references are validated server-side and omitted from the browser

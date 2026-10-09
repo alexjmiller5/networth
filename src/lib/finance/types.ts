@@ -8,7 +8,7 @@ export type AccountType =
 	| '401k'
 	| 'cash'
 	| 'stored_value'
-	/** A noncash refundable asset (Life Data `assets.kind`), never a bank account. */
+	/** A noncash refundable asset (Soma `assets.kind`), never a bank account. */
 	| 'security_deposit';
 
 export interface Account {

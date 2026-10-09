@@ -5,8 +5,8 @@
 # Push to CF:     just sync-secrets
 #
 #
-# The one runtime secret: a life-data hub token scoped tables:read, minted
-# with `life token create networth --scopes tables:read` and stored in the
+# The one runtime secret: a soma hub token scoped tables:read, minted
+# with `soma token create networth --scopes tables:read` and stored in the
 # project ENV item. The hub URL is a plain var in wrangler.jsonc. CI deploy
 # creds live in deploy.yml.
-LIFE_HUB_TOKEN=op://Networth/Networth ENV/LIFE_HUB_TOKEN
+SOMA_HUB_TOKEN=op://Networth/Networth ENV/LIFE_HUB_TOKEN

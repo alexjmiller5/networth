@@ -1,6 +1,6 @@
 # Networth
 
-A private money-over-time dashboard backed by a life-data hub. One chart
+A private money-over-time dashboard backed by a soma hub. One chart
 shares its date range, grouping, visible series, and display controls with
 the figures around it. Bars are the default; filters persist in localStorage
 and the URL stays clean.
@@ -61,8 +61,8 @@ current name applies after the last historical interval.
 
 ## Configuration and development
 
-Requires Bun and Node 24 for the SQLite-backed API tests. Set `LIFE_HUB_URL` in `wrangler.jsonc` to the hub endpoint and
-provide `LIFE_HUB_TOKEN` as a server secret. The token needs `tables:read`
+Requires Bun and Node 24 for the SQLite-backed API tests. Set `SOMA_HUB_URL` in `wrangler.jsonc` to the hub endpoint and
+provide `SOMA_HUB_TOKEN` as a server secret. The token needs `tables:read`
 only. `.env.tpl` contains 1Password references, never secret values.
 
 ```sh
@@ -80,7 +80,7 @@ provider and run `bun run dev`. No client-prefixed environment variables
 should contain the hub token.
 
 The provisioning script can mint a dedicated read-only hub token using the
-caller's configured `life` admin access. It refuses to replace an existing
+caller's configured `soma` admin access. It refuses to replace an existing
 live token. Run it through the project bootstrap process so the newly minted
 value goes straight into the project's secret vault.
 

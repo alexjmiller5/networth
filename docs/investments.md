@@ -1,7 +1,7 @@
 # Native investment observations
 
 The Investments page reads the cataloged `investment_instruments` and
-`investment_observations` tables through the existing dedicated Life Data reader.
+`investment_observations` tables through the existing dedicated Soma reader.
 It shows native units, provider prices, reported market values and custody cash
 independently. Missing data remains unavailable. The page does not infer holdings
 completeness, compute a portfolio total, or reuse transaction prices as NAVs.
