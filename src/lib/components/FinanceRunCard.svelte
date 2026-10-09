@@ -36,7 +36,14 @@
 		canceled: ['Canceled', 'outline']
 	};
 	const when = (ms: number | null) =>
-		ms === null ? '' : new Date(ms).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+		ms === null
+			? ''
+			: new Date(ms).toLocaleString([], {
+					month: 'short',
+					day: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit'
+				});
 
 	async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
 		const response = await fetch(path, {
@@ -189,19 +196,25 @@
 					>
 				{/if}
 			</div>
-			{#if latest.tab_label || latest.agent_name}
-				<p class="flex flex-wrap items-center gap-1.5 break-all">
-					<IconTerminal2 size={14} class="text-muted-foreground" aria-hidden="true" />
-					{latest.tab_label ?? 'Herdr tab pending'}{#if latest.agent_name}<span
-							class="text-muted-foreground"
-							>· agent {latest.agent_name}{latest.agent_kind ? ` (${latest.agent_kind})` : ''}</span
-						>{/if}
+			{#if latest.tab_label}
+				<p class="flex items-center gap-1.5 break-all">
+					<IconTerminal2 size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" />
+					Herdr tab {latest.tab_label}
+				</p>
+			{/if}
+			{#if latest.agent_name}
+				<p class="break-all text-muted-foreground">
+					Agent {latest.agent_name}{latest.agent_kind ? ` (${latest.agent_kind})` : ''}
 				</p>
 			{/if}
 			<p class="text-muted-foreground">
-				Requested {when(latest.created_at)}{#if latest.started_at}
-					· started {when(latest.started_at)}{/if}{#if latest.finished_at}
-					· finished {when(latest.finished_at)}{/if}
+				{[
+					`Requested ${when(latest.created_at)}`,
+					latest.started_at && `started ${when(latest.started_at)}`,
+					latest.finished_at && `finished ${when(latest.finished_at)}`
+				]
+					.filter(Boolean)
+					.join(' · ')}
 			</p>
 			{#if latest.summary}<p class="break-words">{latest.summary}</p>{/if}
 		</div>
