@@ -29,7 +29,7 @@ total. Tooltips omit amounts that display as zero.
 The browser requests `/api/finance` from the SvelteKit Worker. That route
 reads the account registry, source transaction tables, overlays, shares,
 categories, reconciliation records, Venmo statement evidence, and points
-history using a dedicated `tables:read` hub token. Only the fields needed
+history using its own read-only Soma token. Only the fields needed
 by the dashboard reach the browser. The token, raw provider payloads, notes,
 and stated balance evidence remain server-side. Responses are private and
 not cached server-side. Cloudflare Access protects the entire site and API.
@@ -62,8 +62,9 @@ current name applies after the last historical interval.
 ## Configuration and development
 
 Requires Bun and Node 24 for the SQLite-backed API tests. Set `SOMA_HUB_URL` in `wrangler.jsonc` to the hub endpoint and
-provide `SOMA_HUB_TOKEN` as a server secret. The token needs `tables:read`
-only. `.env.tpl` contains 1Password references, never secret values.
+provide `SOMA_HUB_TOKEN` as a server secret. The token is read-only: enroll
+the server with a Soma profile granting broad `tables:read` (the reward and
+asset reads include `provenance`, which no table-scoped grant can name). `.env.tpl` contains 1Password references, never secret values.
 
 ```sh
 bun install --frozen-lockfile
@@ -79,10 +80,11 @@ Alternatively inject the same environment variables through your own secret
 provider and run `bun run dev`. No client-prefixed environment variables
 should contain the hub token.
 
-The provisioning script can mint a dedicated read-only hub token using the
-caller's configured `soma` admin access. It refuses to replace an existing
-live token. Run it through the project bootstrap process so the newly minted
-value goes straight into the project's secret vault.
+Enroll the hub token rather than minting it: the Soma operator adds the
+profile, then `soma login --profile <id> --name "Networth server" --start
+pending.json` prints a link the owner approves, and `soma login --claim
+pending.json --wait` prints the token for the `SOMA_HUB_TOKEN` field. The
+provisioning script mints only the Cloudflare deployment credential.
 
 ## Deployment
 

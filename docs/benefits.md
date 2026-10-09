@@ -2,7 +2,7 @@
 
 `/benefits` shows provider-native benefit plans and dated observations from
 `/api/benefits`. The server uses the existing Networth `SOMA_HUB_URL` and
-`SOMA_HUB_TOKEN` service configuration, with read-only `tables:read` access.
+`SOMA_HUB_TOKEN` service configuration, with its read-only Soma profile.
 No resource, credential, or data-write path is added.
 
 The endpoint requests only `benefit_plans` and `benefit_snapshots`, with fixed

@@ -5,8 +5,8 @@
 # Push to CF:     just sync-secrets
 #
 #
-# The one runtime secret: a soma hub token scoped tables:read, minted
-# with `soma token create networth --scopes tables:read` and stored in the
-# project ENV item. The hub URL is a plain var in wrangler.jsonc. CI deploy
+# The one runtime secret: this server's own Soma token, enrolled with a
+# read-only Soma profile (owner-approved link, `soma login --start/--claim`)
+# and stored in the project ENV item. The hub URL is a plain var in wrangler.jsonc. CI deploy
 # creds live in deploy.yml.
 SOMA_HUB_TOKEN=op://Networth/Networth ENV/SOMA_HUB_TOKEN

@@ -11,19 +11,15 @@ import provision
 
 
 class HubTokenTest(unittest.TestCase):
-    def test_mints_only_read_scope_and_refuses_to_replace_live_token(self):
+    def test_hub_token_is_enrolled_never_minted(self):
+        # A Soma consumer token comes from an owner-approved profile enrollment,
+        # so bootstrap must not offer to mint one with operator access.
+        self.assertNotIn("SOMA_HUB_TOKEN", provision.FIELDS)
+        self.assertNotIn("SOMA_HUB_TOKEN", provision.MINTERS)
         with patch.object(provision.subprocess, "run") as run:
-            run.side_effect = [
-                subprocess.CompletedProcess([], 0, "[]", ""),
-                subprocess.CompletedProcess([], 0, json.dumps({"token": "test-token", "scopes": "tables:read"}), ""),
-            ]
-            self.assertEqual(provision.mint_hub_token(), "test-token")
-            self.assertEqual(run.call_args.args[0], ["soma", "token", "create", "networth", "--scopes", "tables:read"])
-            run.reset_mock()
-            run.side_effect = [subprocess.CompletedProcess([], 0, '[{"name":"networth","revoked_at":null}]', "")]
-            with self.assertRaises(RuntimeError):
-                provision.mint_hub_token()
-            self.assertEqual(run.call_count, 1)
+            with patch.object(provision.sys, "argv", ["provision.py", "--list"]):
+                provision.main()
+            run.assert_not_called()
 
     def test_secret_delivery_uses_stdin_and_refuses_unresolved_values(self):
         script = Path(__file__).with_name('sync-secrets.sh')
