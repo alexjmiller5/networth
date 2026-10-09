@@ -170,10 +170,17 @@ services.networth-host = {
 };
 ```
 
-Then enroll once, in the login session (the login Keychain is locked over
-ssh; on a headless Mac use `launchctl submit -l networth-enroll -o <log> -e
-<log> -- /run/current-system/sw/bin/networth-host enroll` and read the URL
-from the log):
+Then enroll once, in the login session. The login Keychain is locked over
+ssh; on a headless Mac submit a one-shot job and read the link from its log.
+`launchctl submit` restarts a job that exits, so the job removes itself
+(a restarted enroll would replace the approved credential):
+
+```sh
+launchctl submit -l networth-enroll -o <log> -e <log> -- /bin/sh -c \
+  '/run/current-system/sw/bin/networth-host enroll --label "Mac mini"; launchctl remove networth-enroll'
+```
+
+From a desktop terminal it is just:
 
 ```sh
 networth-host enroll --label "Mac mini"
