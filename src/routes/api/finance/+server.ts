@@ -69,7 +69,27 @@ const TABLES: Record<string, string[]> = {
 		'share_id',
 		'deleted_at'
 	],
-	asset_evidence: ['to_ref', 'from_kind', 'from_ref', 'deleted_at']
+	asset_evidence: ['to_ref', 'from_kind', 'from_ref', 'deleted_at'],
+	reward_components: ['id', 'unit', 'deleted_at'],
+	reward_events: [
+		'id',
+		'component_id',
+		'kind',
+		'state',
+		'event_date',
+		'posted_date',
+		'supersedes_id',
+		'deleted_at'
+	],
+	redemption_valuations: [
+		'id',
+		'event_id',
+		'currency',
+		'reward_value',
+		'category',
+		'supersedes_id',
+		'deleted_at'
+	]
 };
 // Tables read under another hub name, optionally as an indexed equality slice.
 const HUB_TABLE: Record<string, { table: string; where?: Record<string, string> }> = {

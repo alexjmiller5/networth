@@ -17,6 +17,7 @@ import {
 export const STORAGE_KEY = 'networth-ui';
 export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
+export const REWARDS_PAID = 'rewards-paid';
 export const ASSET_CLASSES: AssetClass[] = ['cash', 'investments', 'deposits'];
 export interface Controls {
 	hideAmounts: boolean;
@@ -186,7 +187,7 @@ export function buildView(
 		t.standalone
 			? state.accountStatuses.includes('open') &&
 				state.assetClassFilter.includes('cash') &&
-				state.balanceSources.includes('accounts')
+				state.balanceSources.includes(t.fundedBy ? 'rewards' : 'accounts')
 			: ids.has(t.account_id ?? '')
 	);
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
@@ -196,7 +197,7 @@ export function buildView(
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
 	const keyOf = (t: Txn) => {
 		if (groupBy === 'category') return t.category;
-		if (t.standalone) return FRIEND_PAID;
+		if (t.standalone) return t.fundedBy ? REWARDS_PAID : FRIEND_PAID;
 		const account = accountOf.get(t.account_id ?? '');
 		return account ? accountGroup(account, groupBy) : undefined;
 	};
@@ -239,7 +240,10 @@ export function buildView(
 							.map((a) => accountGroup(a, groupBy))
 					)
 				];
-	if (groupBy !== 'category' && txns.some((t) => t.standalone)) registry.push(FRIEND_PAID);
+	if (groupBy !== 'category') {
+		if (txns.some((t) => t.standalone && !t.fundedBy)) registry.push(FRIEND_PAID);
+		if (txns.some((t) => t.fundedBy)) registry.push(REWARDS_PAID);
+	}
 	const keys = [
 		...new Set([
 			...registry,
@@ -286,7 +290,9 @@ export function buildView(
 	);
 	for (const key of currentZeros) if (!values.has(key)) values.set(key, 0);
 	const summary = keys
-		.filter((key) => !hidden.includes(key) && (isFlow || key !== FRIEND_PAID))
+		.filter(
+			(key) => !hidden.includes(key) && (isFlow || (key !== FRIEND_PAID && key !== REWARDS_PAID))
+		)
 		.map((key) => ({ key, value: values.get(key) ?? null }));
 	const title = !isFlow
 		? cumulative

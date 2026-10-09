@@ -25,6 +25,8 @@
 	import IconFilter from '@tabler/icons-svelte/icons/filter';
 	import IconChevronDown from '@tabler/icons-svelte/icons/chevron-down';
 	import IconArrowsDownUp from '@tabler/icons-svelte/icons/arrows-down-up';
+	import arrowsDownUpSvg from '@tabler/icons/icons/outline/arrows-down-up.svg?raw';
+	import giftSvg from '@tabler/icons/icons/outline/gift.svg?raw';
 	import IconSum from '@tabler/icons-svelte/icons/sum';
 	import IconRefresh from '@tabler/icons-svelte/icons/refresh';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
@@ -48,6 +50,7 @@
 		buildView,
 		clearControlParams,
 		FRIEND_PAID,
+		REWARDS_PAID,
 		pointsAt,
 		readControls,
 		toggleHidden,
@@ -136,7 +139,7 @@
 			? [...categories]
 					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
 					.map((c) => c.name)
-			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets)])]
+			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets), REWARDS_PAID])]
 	);
 	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
@@ -167,6 +170,7 @@
 	};
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
+		if (key === REWARDS_PAID) return 'Points-paid';
 		if (groupBy === 'asset') return classLabels[key as AssetClass] ?? key;
 		start = start < viewState.dateStart ? viewState.dateStart : start;
 		end = end > viewState.dateEnd ? viewState.dateEnd : end;
@@ -179,7 +183,13 @@
 				? (typeLabels[key] ?? key)
 				: key;
 	}
+	// Inline SVG data URLs so canvas legends and tooltips draw these icons without a request.
+	const ownIcons: Record<string, string> = {
+		[FRIEND_PAID]: `data:image/svg+xml,${encodeURIComponent(arrowsDownUpSvg)}`,
+		[REWARDS_PAID]: `data:image/svg+xml,${encodeURIComponent(giftSvg)}`
+	};
 	function iconFor(key: string): string | undefined {
+		if (groupBy !== 'category' && key in ownIcons) return ownIcons[key];
 		if (groupBy === 'account') return accounts.find((a) => a.id === key)?.logo;
 		if (groupBy === 'bank') return accounts.find((a) => a.bank === key && a.logo)?.logo;
 		const category = groupBy === 'category' ? categories.find((c) => c.name === key) : undefined;
@@ -198,6 +208,7 @@
 	}
 	function iconComponent(key: string) {
 		if (key === FRIEND_PAID) return IconArrowsDownUp;
+		if (key === REWARDS_PAID) return IconGift;
 		if (groupBy === 'asset')
 			return key === 'cash' ? IconCash : key === 'deposits' ? IconLockDollar : IconChartPie;
 		if (groupBy !== 'category' && depositAsOf(key) !== undefined) return IconLockDollar;
