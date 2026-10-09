@@ -1,5 +1,6 @@
 import { assetClass } from './series';
 import { refundablePrincipal, type PrincipalEvent } from './refundable-principal';
+import type { AccountValuation } from './valuation';
 // Join raw finance facts with their judgment layer. Spending uses dated
 // shares; monetary balances use ledger effects verified against source gates.
 import type {
@@ -44,6 +45,8 @@ export interface Estate {
 	coverage: AccountCoverage[];
 	/** Balance-only noncash assets; their ledger rows are internal txns. Not reconciled accounts. */
 	assets: Account[];
+	/** Daily market value of investment accounts, when the price cache is configured. */
+	valuations?: AccountValuation[];
 }
 
 const live = (r: HubRow): boolean => r.deleted_at == null;
@@ -360,6 +363,12 @@ export function assemble(t: EstateTables): Estate {
 					}
 				}
 			}
+			// Custody cash is the ledger's own cross-check, never an extra asset.
+			const cash = rows
+				.filter((t) => !c.asOf || t.date <= c.asOf.slice(0, 10))
+				.reduce((sum, t) => sum + t.amount, 0);
+			if (hasMoney && Math.abs(Math.round(cash * 100) - Math.round(money * 100)) > 1)
+				c.reasons.push('Custody cash does not match the monetary gate');
 			const rawUnits = object(gates.units)[a.id];
 			const explicitPositions =
 				rawUnits !== null && typeof rawUnits === 'object' && !Array.isArray(rawUnits);

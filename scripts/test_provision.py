@@ -28,19 +28,25 @@ class HubTokenTest(unittest.TestCase):
             (tools / 'op').write_text('#!/bin/sh\nshift 3\nexec "$@"\n')
             (tools / 'bunx').write_text(
                 '#!/usr/bin/env python3\nimport json, os, sys\n'
-                'value = os.environ["SOMA_HUB_TOKEN"]\n'
-                'assert value not in " ".join(sys.argv)\n'
-                'assert sys.stdin.read() in (value, "SOMA_HUB_TOKEN=" + value + "\\n")\n'
+                'names = ("SOMA_HUB_TOKEN", "TIINGO_API_KEY")\n'
+                'assert all(os.environ[n] not in " ".join(sys.argv) for n in names)\n'
+                'body = sys.stdin.read()\n'
+                'assert body in [os.environ[n] for n in names] + ["".join(f"{n}={os.environ[n]}\\n" for n in names)], body\n'
                 'print(json.dumps(sys.argv[1:]))\n'
             )
             for path in tools.iterdir():
                 path.chmod(0o700)
             env = {**os.environ, 'PATH': f'{directory}:{os.environ["PATH"]}'}
-            for value in ('', 'CHANGEME', 'op://unresolved/reference', 'invalid\nvalue'):
-                result = subprocess.run(['bash', str(script), '--deploy'], env={**env, 'SOMA_HUB_TOKEN': value}, capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(result.stdout, '')
-            result = subprocess.run(['bash', str(script), '--deploy', '--dry-run'], env={**env, 'SOMA_HUB_TOKEN': 'fixture-only'}, capture_output=True, text=True)
+            good = {'SOMA_HUB_TOKEN': 'fixture-only', 'TIINGO_API_KEY': 'fixture-key'}
+            for name in good:
+                for value in ('', 'CHANGEME', 'op://unresolved/reference', 'invalid\nvalue'):
+                    result = subprocess.run(['bash', str(script), '--deploy'], env={**env, **good, name: value}, capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, '')
+            result = subprocess.run(['bash', str(script)], env={**env, **good}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual([json.loads(line) for line in result.stdout.splitlines()], [['wrangler', 'secret', 'put', 'SOMA_HUB_TOKEN'], ['wrangler', 'secret', 'put', 'TIINGO_API_KEY']])
+            result = subprocess.run(['bash', str(script), '--deploy', '--dry-run'], env={**env, **good}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout), ['wrangler', 'deploy', '--secrets-file', '/dev/stdin', '--dry-run'])
 

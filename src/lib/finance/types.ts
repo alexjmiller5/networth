@@ -41,6 +41,8 @@ export interface AccountCoverage {
 	status: 'verified' | 'unverified' | 'missing' | 'investment-unvalued' | 'verified-closed-zero';
 	/** Verified current flat investment only; never a historical price series. */
 	currentBalance?: 0;
+	/** Oldest price date behind a verified investment's current market value. */
+	valuedAsOf?: string;
 	basis: 'money' | 'units' | 'none';
 	asOf: string | null;
 	firstTransaction: string | null;

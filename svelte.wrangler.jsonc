@@ -1,0 +1,6 @@
+// Where SvelteKit's adapter writes its Worker. Only main and assets are read from
+// this file; wrangler.jsonc deploys worker.js, which wraps that Worker with the cron.
+{
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" }
+}

@@ -109,7 +109,8 @@
 		[
 			...data.txns.flatMap((t) => [t.date, ...(t.shares ?? []).map((s) => s.date)]),
 			...data.points.map((p) => p.scrapedAt.slice(0, 10)),
-			...data.coverage.map((c) => c.asOf?.slice(0, 10))
+			...data.coverage.map((c) => c.asOf?.slice(0, 10)),
+			...(data.valuations ?? []).map((v) => v.end)
 		]
 			.filter(isDate)
 			.sort()
@@ -129,7 +130,17 @@
 			: clampRange(controls.dateStart, controls.dateEnd, minDate, maxDate)
 	);
 	const viewState = $derived({ ...controls, dateStart: range.start, dateEnd: range.end });
-	const view = $derived(buildView(data.txns, accounts, categories, viewState, data.coverage));
+	const view = $derived(
+		buildView(data.txns, accounts, categories, viewState, data.coverage, data.valuations ?? [])
+	);
+	/** Oldest price date behind an investment account's value at the shown end date. */
+	function pricedAsOf(key: string): string | null | undefined {
+		const v =
+			groupBy === 'account' ? data.valuations?.find((x) => x.account_id === key) : undefined;
+		if (!v || viewState.dateEnd < v.start || viewState.dateEnd > v.end) return undefined;
+		const i = Math.round((Date.parse(viewState.dateEnd) - Date.parse(v.start)) / 86_400_000);
+		return v.values[i] === null ? undefined : (v.priceDates[i] ?? viewState.dateEnd);
+	}
 	const groupBy = $derived(controls.groupBy);
 	const groupKeys = (list: Account[]) =>
 		[...list].sort((a, b) => a.id.localeCompare(b.id)).map((a) => accountGroup(a, groupBy));
@@ -239,7 +250,7 @@
 		data.coverage.filter((c) => view.accountIds.includes(c.account_id))
 	);
 	const incomplete = $derived(
-		selectedCoverage.some((c) => c.status !== 'verified' || c.basis !== 'money')
+		selectedCoverage.some((c) => c.status !== 'verified' || (c.basis !== 'money' && !c.valuedAsOf))
 	);
 	async function refresh(): Promise<void> {
 		refreshing = true;
@@ -750,6 +761,7 @@
 								? ` · as of ${depositAsOf(row.key)}`
 								: ''}
 						{:else if row.value === null}{coverage ? coverageText(coverage).label : 'Not verified'}
+						{:else if pricedAsOf(row.key)}Market value as of {pricedAsOf(row.key)}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
 					</p>
@@ -790,8 +802,8 @@
 	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
 		<span
 			>{incomplete
-				? 'Incomplete historical coverage. Charts include verified monetary accounts; current closed-account balances may appear in Overview.'
-				: 'Balances include verified monetary accounts.'}{assets.length
+				? 'Incomplete coverage. Charts include verified monetary accounts and investment market values on days every holding has a current price; gaps are unavailable, never zero.'
+				: 'Balances include verified monetary accounts and priced investment holdings.'}{assets.length
 				? ' Deposits come from evidenced principal events.'
 				: ''}</span
 		>
@@ -824,6 +836,9 @@
 					>: {coverageText(c).label}
 					{#if c.asOf}<span class="text-muted-foreground">
 							· checked {c.asOf.slice(0, 10)}</span
+						>{/if}
+					{#if c.valuedAsOf}<span class="text-muted-foreground">
+							· market value as of {c.valuedAsOf}</span
 						>{/if}
 					{#if c.reasons.length}<p class="mt-1 text-muted-foreground">
 							{coverageText(c).details}

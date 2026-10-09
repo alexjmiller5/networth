@@ -4,7 +4,9 @@ export function needsNet(data: StackedSeries, enabled = false): boolean {
 	return (
 		enabled &&
 		data.dates.some(
-			(_, i) => data.series.some((s) => s.data[i] > 0) && data.series.some((s) => s.data[i] < 0)
+			(_, i) =>
+				data.series.some((s) => (s.data[i] ?? 0) > 0) &&
+				data.series.some((s) => (s.data[i] ?? 0) < 0)
 		)
 	);
 }

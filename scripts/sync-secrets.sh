@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Resolve the runtime secret before starting Wrangler. --deploy uploads code
-# and its secret together; otherwise update the existing Worker's secret.
+# Resolve the runtime secrets before starting Wrangler. --deploy uploads code
+# and its secrets together; otherwise update the existing Worker's secrets.
 # Values travel through environment/stdin only, never a file or argument.
 set -euo pipefail
 op run --env-file=.env.tpl -- bash -euc '
-  if [[ -z "${SOMA_HUB_TOKEN:-}" || "$SOMA_HUB_TOKEN" == CHANGEME || "$SOMA_HUB_TOKEN" == op://* || "$SOMA_HUB_TOKEN" == *$'"'"'\n'"'"'* ]]; then
-    echo "A resolved SOMA_HUB_TOKEN is required" >&2
-    exit 1
-  fi
+  names=(SOMA_HUB_TOKEN TIINGO_API_KEY)
+  for name in "${names[@]}"; do
+    value="${!name:-}"
+    if [[ -z "$value" || "$value" == CHANGEME || "$value" == op://* || "$value" == *$'"'"'\n'"'"'* ]]; then
+      echo "A resolved $name is required" >&2
+      exit 1
+    fi
+  done
   if [[ "${1:-}" == --deploy ]]; then
     shift
-    printf "SOMA_HUB_TOKEN=%s\n" "$SOMA_HUB_TOKEN" | bunx wrangler deploy --secrets-file /dev/stdin "$@"
+    for name in "${names[@]}"; do printf "%s=%s\n" "$name" "${!name}"; done |
+      bunx wrangler deploy --secrets-file /dev/stdin "$@"
   else
-    printf "%s" "$SOMA_HUB_TOKEN" | bunx wrangler secret put SOMA_HUB_TOKEN "$@"
+    for name in "${names[@]}"; do printf "%s" "${!name}" | bunx wrangler secret put "$name" "$@"; done
   fi
 ' -- "$@"

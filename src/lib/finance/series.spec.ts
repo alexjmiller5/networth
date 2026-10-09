@@ -304,3 +304,60 @@ describe('flowPieces', () => {
 		expect(bal.series.find((s) => s.key === 'a-check')?.data).toEqual([-150, -141]);
 	});
 });
+
+describe('valued investment series', () => {
+	const broker: Account = { id: 'inv', bank: 'Bank A', name: 'Brokerage', type: 'brokerage' };
+	const valuation = {
+		account_id: 'inv',
+		start: '2026-01-02',
+		end: '2026-01-04',
+		values: [100, null, 120],
+		priceDates: ['2026-01-02', null, '2026-01-04'],
+		gaps: [{ start: '2026-01-03', end: '2026-01-03', reason: 'stale' }]
+	};
+	const investRows: Txn[] = [
+		{
+			account_id: 'inv',
+			date: '2026-01-02',
+			amount: -100,
+			balanceAmount: null,
+			qty: 1,
+			ticker: 'X'
+		}
+	];
+
+	it('charts market value with zero before the first holding and gaps where unpriced', () => {
+		const s = deriveBalances(
+			[...txns, ...investRows],
+			[...accounts, broker],
+			'2026-01-01',
+			'2026-01-05',
+			undefined,
+			[valuation]
+		);
+		expect(s.series.find((x) => x.key === 'inv')!.data).toEqual([0, 100, null, 120, null]);
+		// Cash ledgers are unchanged by the valuation.
+		expect(s.series.find((x) => x.key === 'a-check')!.data).toEqual([100, 100, 60, 60, 60]);
+	});
+
+	it('never lets an unavailable member become a partial group, total or change', () => {
+		const s = deriveBalances(
+			[...txns, ...investRows],
+			[...accounts, broker],
+			'2026-01-02',
+			'2026-01-04',
+			undefined,
+			[valuation]
+		);
+		const bank = groupSeries(s, [...accounts, broker], 'bank');
+		expect(bank.series.find((x) => x.key === 'Bank A')!.data).toEqual([700, null, 680]);
+		// Totals add only available values: the unpriced day is lower, never inflated.
+		expect(netTotals(s)).toEqual([725, 585, 705]);
+		expect(differentiate(bank, new Map([['Bank A', 600]])).series[0].data).toEqual([
+			100,
+			null,
+			null
+		]);
+		expect(bucketize(bank, 'week').series[0].data).toEqual([680]);
+	});
+});

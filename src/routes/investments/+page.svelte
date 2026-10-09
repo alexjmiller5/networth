@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Seo from '$lib/components/seo.svelte';
+	import PriceSources from '$lib/components/PriceSources.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import IconArrowLeft from '@tabler/icons-svelte/icons/arrow-left';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
@@ -74,8 +75,9 @@
 			>
 			<h1 class="text-2xl font-semibold tracking-tight">Investments</h1>
 			<p class="mt-1 max-w-2xl text-sm text-muted-foreground">
-				Native units, prices, and provider values, each with its own source date. These observations
-				do not establish a complete portfolio valuation.
+				Native units, prices, and provider values, each with its own source date. The dashboard
+				values accounts from ledger positions and the daily price cache; these observations
+				cross-check it.
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
@@ -87,6 +89,7 @@
 			>
 		</div>
 	</header>
+	<PriceSources />
 	{#if data.savedAt}<p role="status" class="text-sm text-muted-foreground">
 			Showing saved observations from {new Date(data.savedAt).toLocaleString()}.
 			<a href="/investments?online=1" data-sveltekit-reload class="underline">Reconnect</a>

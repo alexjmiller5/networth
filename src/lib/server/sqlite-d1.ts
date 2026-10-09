@@ -20,6 +20,9 @@ export function sqliteD1(...migrations: string[]) {
 				}
 			});
 			return { ...bind(), bind };
+		},
+		async batch(statements: { all(): Promise<unknown> }[]) {
+			return Promise.all(statements.map((s) => s.all()));
 		}
 	} as unknown as D1Database;
 	return { db, sqlite };

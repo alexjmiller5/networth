@@ -5,7 +5,8 @@
 	// The hub is another Worker: route fetch through its public URL rather
 	// than Cloudflare's same-zone origin path, which does not invoke it.
 	"compatibility_flags": ["nodejs_als", "global_fetch_strictly_public"],
-	"main": ".svelte-kit/cloudflare/_worker.js",
+	// worker.js wraps the SvelteKit Worker (svelte.wrangler.jsonc) with the cron handler.
+	"main": "worker.js",
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".svelte-kit/cloudflare"
@@ -31,9 +32,17 @@
 			"database_name": "networth-finance-runs",
 			"database_id": "c6d75a4c-4bc1-4cab-94e9-08fc62cbe126",
 			"migrations_dir": "migrations-finance-runs"
+		},
+		{
+			"binding": "PRICES_DB",
+			"database_name": "networth-prices",
+			"database_id": "0ae6d643-097f-452b-a104-1870bafe2e9e",
+			"migrations_dir": "migrations-prices"
 		}
 	],
-	"secrets": { "required": ["SOMA_HUB_TOKEN"] },
+	// Daily price cache refresh (worker.js `scheduled`), after US mutual fund NAVs post.
+	"triggers": { "crons": ["30 2 * * *"] },
+	"secrets": { "required": ["SOMA_HUB_TOKEN", "TIINGO_API_KEY"] },
 	// Where the estate lives. The read token (SOMA_HUB_TOKEN) is a Worker
 	// secret pushed by scripts/sync-secrets.sh, never a var.
 	"vars": {
