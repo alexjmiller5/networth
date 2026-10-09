@@ -46,7 +46,7 @@ struct DashboardView: View {
                     }
                 }
                 Section("Widget options") {
-                    Text("Add Networth from your Home Screen’s widget picker. Choose balances or freshness. Card guidance, cap headroom, rewards and expiry require verified source rules and are shown as unavailable until supported.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Add Networth from your Home Screen’s widget picker, then edit it to choose a view: card balances, which card, cap headroom, rewards, expiry or freshness. Cards and programs without verified rules show unknown rather than a guess.").font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Networth")

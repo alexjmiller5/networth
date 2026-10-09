@@ -5,7 +5,9 @@ import {
 	widgetFailure as fail,
 	widgetHeaders as headers
 } from '$lib/server/widget-http';
-import { widgetBalances } from '$lib/finance/widget-snapshot';
+import { widgetBalances, widgetRewards, type WidgetRewards } from '$lib/finance/widget-snapshot';
+import { env as privateEnv } from '$env/dynamic/private';
+import { loadRewards } from '$lib/server/rewards';
 import type { Estate } from '$lib/finance/assemble';
 import { GET as financeGET } from '../../finance/+server';
 // Only this narrow path may bypass Access. No generic proxy or financial mutation.
@@ -41,24 +43,63 @@ const handle: RequestHandler = async (event) => {
 		}
 		if (device.state !== 'active' || device.kind !== 'widget')
 			return fail(403, 'Device approval is required or has expired or been revoked.');
-		const response = await financeGET(event, true);
-		if (!response.ok) return fail(502, 'The latest snapshot is unavailable.');
-		const estate = (await response.json()) as Estate;
-		const fetchedAt = new Date().toISOString();
-		const balances = widgetBalances(
-			estate.accounts,
-			estate.txns,
-			estate.coverage,
-			fetchedAt.slice(0, 10)
+		const fetchedAt = new Date().toISOString(),
+			today = fetchedAt.slice(0, 10);
+		const loading = financeGET(event, true).then(async (response) =>
+			response.ok ? ((await response.json()) as Estate) : null
 		);
+		const rewards = readWidgetRewards(event, today, loading);
+		const estate = await loading;
+		if (!estate) return fail(502, 'The latest snapshot is unavailable.');
+		const balances = widgetBalances(estate.accounts, estate.txns, estate.coverage, today);
+		const extra = await rewards;
 		// Revocation while a slow source read is in flight must suppress delivery too.
 		if ((await store.authenticate(token, Date.now()))?.state !== 'active')
 			return fail(403, 'Device access was revoked.');
-		return json({ version: 1, fetchedAt, balances }, { headers });
+		// Reward sections are optional within version 1; older apps ignore them.
+		return json(
+			{ version: 1, fetchedAt, balances, ...(extra ?? { rewardsUnavailable: true }) },
+			{ headers }
+		);
 	} catch {
 		return fail(502, 'The latest snapshot is unavailable. Your saved snapshot is unchanged.');
 	}
 };
+/** Reward views degrade independently: a failed rewards read never withholds balances. */
+async function readWidgetRewards(
+	event: Parameters<RequestHandler>[0],
+	today: string,
+	estate: Promise<Estate | null>
+): Promise<WidgetRewards | null> {
+	const env = { ...privateEnv, ...event.platform?.env } as {
+		LIFE_HUB_URL?: string;
+		LIFE_HUB_TOKEN?: string;
+	};
+	const hub = env.LIFE_HUB_URL?.replace(/\/$/, '');
+	if (!hub || !env.LIFE_HUB_TOKEN) return null;
+	try {
+		const rewards = await loadRewards({
+			hub,
+			token: env.LIFE_HUB_TOKEN,
+			fetch: event.fetch,
+			db: event.platform?.env.MARKERS_DB,
+			today,
+			estate: async () => (await estate) ?? Promise.reject(new Error('Ledger unavailable'))
+		});
+		const ledger = await estate;
+		return ledger
+			? widgetRewards(
+					rewards,
+					ledger.accounts,
+					ledger.txns,
+					today,
+					!(ledger as Estate & { categoriesUnavailable?: boolean }).categoriesUnavailable
+				)
+			: null;
+	} catch {
+		return null;
+	}
+}
 export const GET = handle;
 export const DELETE = handle;
 export const POST = handle;

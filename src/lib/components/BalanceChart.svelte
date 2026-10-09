@@ -66,6 +66,10 @@
 		 * tooltip marker via a canvas point style. */
 		iconFor?: (key: string) => string | undefined;
 		iconComponent?: (key: string) => typeof IconHelp;
+		/** Tooltip and tick formatting; dollars unless a native unit is plotted. */
+		format?: (value: number) => string;
+		tickFormat?: (value: number) => string;
+		ariaLabel?: string;
 	}
 	const {
 		markers = [],
@@ -82,7 +86,10 @@
 		labelFor = (k) => k,
 		slotFor,
 		iconFor = () => undefined,
-		iconComponent = () => IconHelp
+		iconComponent = () => IconHelp,
+		format,
+		tickFormat,
+		ariaLabel = 'Financial series for the selected date range'
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -219,8 +226,10 @@
 		};
 	}
 
-	const money = (v: number): string => formatMoney(v, hideAmounts);
-	const moneyTick = (v: number): string => formatMoneyTick(v, hideAmounts);
+	const money = (v: number): string =>
+		hideAmounts ? 'Hidden' : format ? format(v) : formatMoney(v, false);
+	const moneyTick = (v: number): string =>
+		hideAmounts ? '' : tickFormat ? tickFormat(v) : formatMoneyTick(v, false);
 
 	const tooltipTitle = (items: { dataIndex: number }[]): string => {
 		const raw = data.dates[items[0]?.dataIndex ?? -1];
@@ -422,13 +431,15 @@
 		void bucket;
 		void kind;
 		void hideAmounts;
+		void format;
+		void tickFormat;
 		void markers;
 		render();
 	});
 </script>
 
 <div class="relative w-full {heightClass}">
-	<canvas bind:this={canvas} aria-label="Financial series for the selected date range"></canvas>
+	<canvas bind:this={canvas} aria-label={ariaLabel}></canvas>
 	<MarkerTooltip.Provider>
 		{#each markerLabels as position (position.key)}
 			<MarkerTooltip.Root ignoreNonKeyboardFocus={false}>

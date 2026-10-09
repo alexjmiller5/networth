@@ -200,3 +200,25 @@ export function selectRedemptionValuationHeads<
 				: null
 	}));
 }
+
+export interface RewardTermVersion extends Version {
+	program_id: string;
+	component_id: string | null;
+	term_key: string;
+}
+/** Term assertions share the chain rules: one head per program, unit scope and term key. */
+export function selectRewardTermHeads<T extends RewardTermVersion>(
+	terms: readonly T[]
+): { head: T | null; diagnostics: HistoryDiagnostic[] }[] {
+	const groups = new Map<string, Group<T>>();
+	for (const row of terms) {
+		const key = JSON.stringify([row.program_id, row.component_id, row.term_key]);
+		const group = groups.get(key) ?? { key, scope: null, rows: [], diagnostics: [] };
+		group.rows.push(row);
+		groups.set(key, group);
+	}
+	return resolveChains([...groups.values()]).map(({ head, diagnostics }) => ({
+		head,
+		diagnostics
+	}));
+}

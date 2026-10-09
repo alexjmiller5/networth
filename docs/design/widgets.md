@@ -28,18 +28,16 @@ page `#f2f4f5`, soft green `#e4eeea`.
 - Freshness opens collection/reconciliation detail without triggering capture.
   Widget taps never initiate redemption, payment or bank collection.
 
-## Native delivery boundaries
+## Native delivery
 
-These are design previews, not installed WidgetKit extensions. Native implementation
-needs an owning app container, supported scoped enrollment and secure storage,
-replacement-device reenrollment, verified source contracts and device installation.
-Do not reuse browser cookies, operator credentials, host-companion auth or another
-project's resource. No deployment or enrollment is implied by preview review.
-
-The app supplies a last-good snapshot to its own widget extension; UI distinguishes
-capture time and source-as-of. Refresh is opportunistic under WidgetKit scheduling,
-not an always-live balance promise. Use native privacy-sensitive views and explicit
-amount concealment. Locked, unenrolled, stale and partial states need native tests.
+All six views ship in the iPhone WidgetKit extension as one configurable widget
+(edit the widget to choose its view). They read the last-good snapshot the app
+saves from `/api/device/snapshot`; reward sections are optional fields in that
+version 1 payload, so a failed rewards read never withholds balances. Guidance,
+caps and expiry come from published typed terms only: a card or program without
+verified terms shows unknown, never a guess. Hide amounts in the app masks every
+amount in every view; rates and dates stay visible. Widget taps open the app; they
+never redeem, pay or start collection.
 
 References: [Apple timeline refresh](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date),
 [privacy-sensitive widget views](https://developer.apple.com/documentation/widgetkit/creating-a-widget-extension).
