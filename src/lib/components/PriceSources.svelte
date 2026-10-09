@@ -28,6 +28,12 @@
 		alphavantage: 'Alpha Vantage (last 100 days)',
 		netbenefits: 'NetBenefits NAV (finance runs)'
 	};
+	const SHORT = {
+		tiingo: 'Tiingo',
+		fidelity: 'Fidelity NAV',
+		alphavantage: 'Alpha Vantage',
+		netbenefits: 'NetBenefits'
+	};
 	let mappings = $state<Mapping[]>([]);
 	let error = $state('');
 	let saving = $state(false);
@@ -129,7 +135,7 @@
 			{/each}
 		</ul>{/if}
 	<div class="mt-4 overflow-x-auto">
-		<table class="w-full min-w-[32rem] text-left text-sm">
+		<table class="w-full text-left text-sm">
 			<thead class="text-xs text-muted-foreground">
 				<tr
 					><th class="py-2 pr-3 font-medium">Account</th><th class="py-2 pr-3 font-medium"
@@ -143,7 +149,7 @@
 					<tr class="border-t">
 						<td class="py-2 pr-3 break-all">{m.account_id}</td>
 						<td class="py-2 pr-3 break-all">{m.security_id}</td>
-						<td class="py-2 pr-3">{PROVIDERS[m.provider]}</td>
+						<td class="py-2 pr-3" title={PROVIDERS[m.provider]}>{SHORT[m.provider]}</td>
 						<td class="py-2 pr-3">{m.symbol ?? '-'}</td>
 						<td class="flex justify-end gap-1 py-1">
 							<Button

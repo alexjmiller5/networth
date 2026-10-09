@@ -762,8 +762,7 @@
 								: ''}
 						{:else if row.value === null}{coverage
 								? coverageText(coverage).label
-								: 'Not verified'}{#if coverage?.status === 'investment-unvalued' && coverage.reasons.length}
-								· {coverageText(coverage).details}{/if}
+								: 'Not verified'}{#if coverage?.status === 'investment-unvalued' && coverage.reasons.length}{` · ${coverageText(coverage).details}`}{/if}
 						{:else if pricedAsOf(row.key)}Market value as of {pricedAsOf(row.key)}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
