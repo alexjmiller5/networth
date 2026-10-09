@@ -915,3 +915,10 @@ it('ignores an owner value whose program no longer exists', () =>
 			values: [{ program_id: 'retired', value_per_unit: '1', revision: 1 }]
 		}).programs[0].value
 	).toBeNull());
+it('reads term payloads the hub returns as JSON text, and rejects malformed ones', () => {
+	const stored = { ...term({}, { type: 'provider_deadline', expires_on: '2031-08-24' }) };
+	const asText = { ...stored, payload: JSON.stringify(stored.payload) };
+	expect(withTerms([asText]).components[0].expiry).toMatchObject({ expiresOn: '2031-08-24' });
+	for (const payload of ['{', '[]', '"text"', 'null'])
+		expect(() => withTerms([{ ...stored, payload }])).toThrow('Invalid reward data');
+});

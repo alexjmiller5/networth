@@ -558,7 +558,14 @@ export function assembleRewards(
 
 const applicabilityRank = { public_unverified: 0, account_observed: 1, owner_confirmed: 2 };
 function parseTerm(row: RewardRow): Term {
-	const payload = row.payload;
+	let payload = row.payload;
+	// The hub returns json columns as text; local replicas and tests may pass objects.
+	if (typeof payload === 'string')
+		try {
+			payload = JSON.parse(payload);
+		} catch {
+			fail();
+		}
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) fail();
 	const value: Term = {
 		id: text(row.id),
