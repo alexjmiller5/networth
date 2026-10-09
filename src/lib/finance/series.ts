@@ -4,11 +4,13 @@
 // LAST value, never a sum.
 
 import type { Account, AccountCoverage, AssetClass, GroupBy, Txn } from './types';
+import type { AccountValuation } from './valuation';
 import { addDays } from './presets';
 
+/** null is unavailable (an unpriced investment day), never zero. */
 export interface StackedSeries {
 	dates: string[];
-	series: { key: string; data: number[] }[];
+	series: { key: string; data: (number | null)[] }[];
 }
 
 export type Bucket = 'day' | 'week' | 'month';
@@ -23,27 +25,44 @@ export function dateRange(start: string, end: string): string[] {
 }
 
 /** Daily balance per account over [start, end]: cumulative signed txns,
- * including txns before the window (they set the entry balance). */
+ * including txns before the window (they set the entry balance). Investment
+ * accounts take their market valuation instead: zero before their first ledger
+ * day, null where a holding is unpriced. */
 export function deriveBalances(
 	txns: Txn[],
 	accounts: Account[],
 	start: string,
 	end: string,
-	coverage?: AccountCoverage[]
+	coverage?: AccountCoverage[],
+	valuations: AccountValuation[] = []
 ): StackedSeries {
 	const dates = dateRange(start, end);
 	const index = new Map(dates.map((d, i) => [d, i]));
 	const ledger = txns.filter(
 		(t) => !t.standalone && t.account_id != null && t.balanceAmount !== null
 	);
-	const present = new Set(ledger.map((t) => t.account_id));
+	const valued = new Map(valuations.map((v) => [v.account_id, v]));
+	const present = new Set([...ledger.map((t) => t.account_id), ...valued.keys()]);
 	const verified =
 		coverage && new Set(coverage.filter((c) => c.status === 'verified').map((c) => c.account_id));
-	accounts = accounts.filter((a) => present.has(a.id) && (!verified || verified.has(a.id)));
-	const series = accounts.map((a) => ({
-		key: a.id,
-		data: new Array<number>(dates.length).fill(0)
-	}));
+	accounts = accounts.filter(
+		(a) => present.has(a.id) && (valued.has(a.id) || !verified || verified.has(a.id))
+	);
+	const series = accounts.map((a) => {
+		const v = valued.get(a.id);
+		return {
+			key: a.id,
+			data: v
+				? dates.map((d) =>
+						d < v.start
+							? 0
+							: d > v.end
+								? null
+								: v.values[Math.round((Date.parse(d) - Date.parse(v.start)) / 86_400_000)]
+					)
+				: new Array<number | null>(dates.length).fill(0)
+		};
+	});
 	const row = new Map(series.map((s) => [s.key, s.data]));
 
 	const opening = new Map<string, number>();
@@ -60,6 +79,7 @@ export function deriveBalances(
 		}
 	}
 	for (const a of accounts) {
+		if (valued.has(a.id)) continue;
 		const data = row.get(a.id)!;
 		const delta = deltas.get(a.id);
 		let bal = opening.get(a.id) ?? 0;
@@ -92,14 +112,19 @@ export function groupSeries(
 ): StackedSeries {
 	if (groupBy === 'account') return s;
 	const groupOf = new Map(accounts.map((a) => [a.id, accountGroup(a, groupBy)]));
-	const merged = new Map<string, number[]>();
+	const merged = new Map<string, (number | null)[]>();
 	for (const ser of s.series) {
 		const key = groupOf.get(ser.key) ?? ser.key;
 		const data = merged.get(key);
 		if (!data) {
 			merged.set(key, [...ser.data]);
 		} else {
-			for (let i = 0; i < data.length; i++) data[i] += ser.data[i];
+			// A group with any unavailable member is unavailable, never a silent partial sum.
+			for (let i = 0; i < data.length; i++)
+				data[i] =
+					data[i] === null || ser.data[i] === null
+						? null
+						: Math.round((data[i]! + ser.data[i]!) * 100) / 100;
 		}
 	}
 	return { dates: s.dates, series: [...merged].map(([key, data]) => ({ key, data })) };
@@ -131,7 +156,7 @@ export function bucketize(s: StackedSeries, bucket: Bucket): StackedSeries {
 	return {
 		dates: labels,
 		series: s.series.map((ser) => {
-			const data = new Array<number>(labels.length).fill(0);
+			const data = new Array<number | null>(labels.length).fill(0);
 			// later days overwrite earlier ones -> closing balance per bucket
 			ser.data.forEach((v, i) => (data[target[i]] = v));
 			return { key: ser.key, data };
@@ -148,7 +173,7 @@ export function accumulate(s: StackedSeries): StackedSeries {
 			let sum = 0;
 			return {
 				key: ser.key,
-				data: ser.data.map((v) => (sum = Math.round((sum + v) * 100) / 100))
+				data: ser.data.map((v) => (sum = Math.round((sum + (v ?? 0)) * 100) / 100))
 			};
 		})
 	};
@@ -157,15 +182,18 @@ export function accumulate(s: StackedSeries): StackedSeries {
 /** Bucket-over-bucket deltas of a LEVEL series (balances -> per-bucket net
  * change). `initial` supplies each key's level just before the window so
  * the first bucket's delta is real, not a jump from zero. */
-export function differentiate(s: StackedSeries, initial: Map<string, number>): StackedSeries {
+export function differentiate(
+	s: StackedSeries,
+	initial: Map<string, number | null>
+): StackedSeries {
 	return {
 		dates: s.dates,
 		series: s.series.map((ser) => {
-			let prev = initial.get(ser.key) ?? 0;
+			let prev: number | null = initial.has(ser.key) ? initial.get(ser.key)! : 0;
 			return {
 				key: ser.key,
 				data: ser.data.map((v) => {
-					const d = Math.round((v - prev) * 100) / 100;
+					const d = v === null || prev === null ? null : Math.round((v - prev) * 100) / 100;
 					prev = v;
 					return d;
 				})
@@ -174,10 +202,11 @@ export function differentiate(s: StackedSeries, initial: Map<string, number>): S
 	};
 }
 
-/** Per-date total across all series - the net line (assets minus card debt). */
+/** Per-date total of the AVAILABLE series - the net line (assets minus card debt).
+ * Unavailable values add nothing, so they can never inflate a total. */
 export function netTotals(s: StackedSeries): number[] {
 	return s.dates
-		.map((_, i) => Math.round(s.series.reduce((sum, ser) => sum + ser.data[i], 0) * 100))
+		.map((_, i) => Math.round(s.series.reduce((sum, ser) => sum + (ser.data[i] ?? 0), 0) * 100))
 		.map((v) => v / 100);
 }
 

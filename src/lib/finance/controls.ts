@@ -1,4 +1,5 @@
 import type { Account, AccountCoverage, AssetClass, Category, GroupBy, Txn } from './types';
+import type { AccountValuation } from './valuation';
 import { addDays, clampRange, getPresetRange, PRESET_LABELS, type PresetLabel } from './presets';
 import {
 	accumulate,
@@ -174,7 +175,8 @@ export function buildView(
 	accounts: Account[],
 	categories: Category[],
 	state: Controls,
-	coverage?: AccountCoverage[]
+	coverage?: AccountCoverage[],
+	valuations: AccountValuation[] = []
 ) {
 	accounts = accounts.filter(
 		(a) =>
@@ -202,10 +204,13 @@ export function buildView(
 		return account ? accountGroup(account, groupBy) : undefined;
 	};
 	// Deposits are evidenced principal, not reconciled ledgers, so they have no coverage row.
+	// Investments chart their market valuation, unavailable days included as gaps.
+	const valued = new Set(valuations.map((v) => v.account_id));
 	const verified = coverage
 		? accounts.filter(
 				(a) =>
 					assetClass(a) === 'deposits' ||
+					valued.has(a.id) ||
 					coverage.some(
 						(c) => c.account_id === a.id && c.status === 'verified' && c.basis === 'money'
 					)
@@ -215,13 +220,17 @@ export function buildView(
 	if (isFlow) base = flowSeries(txns, start, end, bucket, keyOf, mode);
 	else {
 		base = bucketize(
-			groupSeries(deriveBalances(txns, verified, start, end), verified, groupBy),
+			groupSeries(
+				deriveBalances(txns, verified, start, end, undefined, valuations),
+				verified,
+				groupBy
+			),
 			bucket
 		);
 		if (!cumulative) {
 			const before = addDays(start, -1);
 			const initial = groupSeries(
-				deriveBalances(txns, verified, before, before),
+				deriveBalances(txns, verified, before, before, undefined, valuations),
 				verified,
 				groupBy
 			);
@@ -282,10 +291,14 @@ export function buildView(
 	const total = cumulative
 		? (totals.at(-1) ?? 0)
 		: Math.round(totals.reduce((sum, v) => sum + v, 0) * 100) / 100;
-	const values = new Map(
+	const values = new Map<string, number | null>(
 		data.series.map((s) => [
 			s.key,
-			cumulative ? (s.data.at(-1) ?? 0) : Math.round(s.data.reduce((n, v) => n + v, 0) * 100) / 100
+			cumulative
+				? (s.data.at(-1) ?? null)
+				: s.data.some((v) => v === null)
+					? null
+					: Math.round(s.data.reduce((n: number, v) => n + v!, 0) * 100) / 100
 		])
 	);
 	for (const key of currentZeros) if (!values.has(key)) values.set(key, 0);

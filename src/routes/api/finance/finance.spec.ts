@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GET } from './+server';
 import type { Estate } from '$lib/finance/assemble';
+import { sqliteD1 } from '$lib/server/sqlite-d1';
 
 const environment = { SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'test-read-token' };
 const event = (fetch: typeof globalThis.fetch, env = environment) =>
@@ -350,4 +351,96 @@ it('returns a categorized redemption as points-paid spending outside every accou
 			fundedBy: 'points'
 		})
 	]);
+});
+
+describe('investment valuation', () => {
+	const hub = (instrumentRows: unknown[] = [], observationRows: unknown[] = []) =>
+		vi.fn(async (_url: unknown, init?: RequestInit) => {
+			const { table } = JSON.parse(String(init?.body));
+			const rows: Record<string, unknown[]> = {
+				accounts: [{ ...account('broker', 'brokersrc'), type: 'brokerage' }],
+				scrape_runs: [
+					{
+						source: 'brokersrc',
+						status: 'ok',
+						reconciled: 1,
+						finished_at: '2026-01-06T00:00:00.000Z',
+						stated_balances: { broker: 500, units: { broker: { VUG: 2 } } }
+					}
+				],
+				txns_brokersrc: [
+					{ ...transaction('deposit', 700), account_id: 'broker' },
+					{ ...transaction('buy', -200), account_id: 'broker', qty: 2, ticker: 'VUG' }
+				],
+				investment_instruments: instrumentRows,
+				investment_observations: observationRows
+			};
+			return Response.json({ rows: rows[table] ?? [] });
+		});
+	const prices = () => {
+		const { db, sqlite } = sqliteD1('migrations-prices/0001_prices.sql');
+		sqlite.exec(`INSERT INTO price_mappings (account_id, security_id, provider, symbol) VALUES ('broker', 'VUG', 'tiingo', 'VUG');
+			INSERT INTO price_closes VALUES ('tiingo', 'VUG', '2026-01-05', '100', 'USD', 'raw-close', NULL, 'x'),
+			('tiingo', 'VUG', '2026-01-06', '110.5', 'USD', 'raw-close', NULL, 'x')`);
+		return db;
+	};
+
+	it('returns the cached-price valuation and verifies the account as of its price date', async () => {
+		vi.useFakeTimers({ now: new Date('2026-01-06T20:00:00.000Z'), toFake: ['Date'] });
+		const response = await GET(event(hub(), { ...environment, PRICES_DB: prices() } as never));
+		vi.useRealTimers();
+		const estate = (await response.json()) as Estate;
+		expect(estate.valuations).toEqual([
+			{
+				account_id: 'broker',
+				start: '2026-01-05',
+				end: '2026-01-06',
+				values: [700, 721],
+				priceDates: ['2026-01-05', '2026-01-06'],
+				gaps: []
+			}
+		]);
+		expect(estate.coverage).toMatchObject([
+			{ account_id: 'broker', status: 'verified', valuedAsOf: '2026-01-06', reasons: [] }
+		]);
+	});
+
+	it('cross-checks observed units within the same instrument scope only', async () => {
+		vi.useFakeTimers({ now: new Date('2026-01-06T20:00:00.000Z'), toFake: ['Date'] });
+		const response = await GET(
+			event(
+				hub(
+					[{ id: 'i1', account_id: 'broker', native_security_id: 'VUG' }],
+					[
+						{
+							instrument_id: 'i1',
+							metric: 'position_units',
+							exact_amount: '3',
+							value_status: 'reported',
+							time_basis: 'observation_only',
+							captured_at: '2026-01-06T06:00:00.000Z'
+						}
+					]
+				),
+				{ ...environment, PRICES_DB: prices() } as never
+			)
+		);
+		vi.useRealTimers();
+		const estate = (await response.json()) as Estate;
+		expect(estate.valuations![0].values).toEqual([null, null]);
+		expect(estate.coverage[0]).toMatchObject({
+			status: 'investment-unvalued',
+			reasons: [
+				'Unavailable on 2026-01-06: Ledger units for VUG differ from the holdings observed on 2026-01-06',
+				'No valued day yet'
+			]
+		});
+	});
+
+	it('keeps investments explicitly unvalued when the cache is missing', async () => {
+		const response = await GET(event(hub()));
+		const estate = (await response.json()) as Estate;
+		expect(estate.valuations).toBeUndefined();
+		expect(estate.coverage[0]).toMatchObject({ status: 'investment-unvalued' });
+	});
 });

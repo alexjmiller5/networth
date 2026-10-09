@@ -68,9 +68,31 @@ protects the site and every API route.
   stay null. Group by plan/year, order source date before capture time, and never
   publish raw evidence references. Reuse device-local amount concealment, including
   eligibility prose, without resetting other controls. See `docs/benefits.md`.
-- Investment valuations require holdings and price history. Missing history,
-  unreconciled accounts, and unavailable valuations remain explicit in
-  coverage and cannot be presented as verified complete net worth.
+- Investment accounts are valued by `valuation.ts`: dated signed ledger positions
+  times the dated raw close (or NAV), plus custody cash only when the account has
+  a monetary gate (a workplace plan exposes none). A day is available only when
+  every holding has a mapped price no older than four days with no newer market
+  day in any cached series; otherwise it is null with a reason, never zero, never
+  carried forward. Groups with an unavailable member are unavailable; totals add
+  only available values. Unit-gate, custody-cash-gate or observed-units
+  disagreements, and splits the ledger records on another day, block valuation.
+  Execution prices are never NAVs and market moves never become transactions.
+  Coverage is verified only when the end date is priced (`valuedAsOf` = oldest
+  price date); otherwise "Investment value unavailable" with the reason.
+- Prices live in Networth's own `PRICES_DB` (`networth-prices`,
+  `migrations-prices/`): `price_mappings` (owner data: account + exact ledger
+  security -> tiingo symbol, Fidelity fund number, alphavantage symbol, or
+  netbenefits) edited on `/investments` via `/api/price-mappings`, and
+  `price_closes` (raw provider closes keyed provider/symbol/date). NetBenefits plan
+  funds have no public series: their NAVs are Soma `investment_observations`
+  recorded during finance runs, joined only within their own instrument's account.
+  The daily cron (`worker.js` `scheduled`, `triggers.crons`) and the dashboard's
+  Fetch prices both POST `/api/prices/refresh`: a new series backfills its whole
+  Tiingo history once, then refetches a 10-day overlap. Provider failures never
+  delete or zero cached rows. `TIINGO_API_KEY` (item `Networth Tiingo API Key`,
+  free tier: 50 requests/hour, 1,000/day, 500 symbols/month, internal personal use
+  only) is a Worker secret; `ALPHA_VANTAGE_API_KEY` is optional and unprovisioned.
+  Details in `docs/price-history.md`.
 - `/investments` displays native instrument observations with exact decimal text.
   Source dates, timestamps, currencies, and price clocks remain separate groups.
   Validate complete correction membership before selecting heads; forks, cycles,
@@ -117,14 +139,18 @@ protects the site and every API route.
   and malformed upstream data; financial tests cover shares, refunds, and
   balance reconciliation. Run `uv run --with httpx python scripts/test_provision.py`
   for credential provisioning and deployment transport checks.
-- `scripts/sync-secrets.sh --deploy` passes code and the runtime secret in
-  one Wrangler deploy, with secret data on stdin only. CI runs this after
+- `scripts/sync-secrets.sh --deploy` passes code and the runtime secrets
+  (`SOMA_HUB_TOKEN`, `TIINGO_API_KEY`) in one Wrangler deploy, with secret data on
+  stdin only. CI runs this after
   tests, static checks, formatting checks, and the production build.
 
 ## Architecture rules
 
 - `MARKERS_DB` holds owner-entered dashboard state: event markers and reward program
-  values (`reward_values`).
+  values (`reward_values`). `PRICES_DB` holds price sources and the price cache.
+- `wrangler.jsonc` deploys `worker.js`, which wraps the SvelteKit Worker (the adapter
+  writes it per `svelte.wrangler.jsonc`) with the cron handler; the cron calls the
+  refresh route in-process, so it never crosses Cloudflare Access.
 - Interactive event markers use only this project's `MARKERS_DB` D1 binding
   and `migrations/`. Creates carry a stable draft UUID for safe retries; reused
   IDs with different content or deleted IDs conflict. Deletion retains only the

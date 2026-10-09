@@ -4,7 +4,10 @@ The Investments page reads the cataloged `investment_instruments` and
 `investment_observations` tables through the existing dedicated Soma reader.
 It shows native units, provider prices, reported market values and custody cash
 independently. Missing data remains unavailable. The page does not infer holdings
-completeness, compute a portfolio total, or reuse transaction prices as NAVs.
+completeness, compute a portfolio total, or reuse transaction prices as NAVs. The
+dashboard's market valuation (`docs/price-history.md`) uses these observations only
+to cross-check ledger units and, for NetBenefits plan funds, as dated NAVs. The
+page also edits the price sources that valuation reads.
 
 Decimal values remain strings all the way to rendering. Each selected source
 assertion includes its source date or instant and separate capture time. Date-only,

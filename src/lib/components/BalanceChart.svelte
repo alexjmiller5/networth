@@ -401,7 +401,14 @@
 								const total = items
 									.filter((it) => it.dataset.stack !== 'net')
 									.reduce((sum, it) => sum + (it.parsed.y ?? 0), 0);
-								return `Total: ${money(total)}`;
+								const i = items[0]?.dataIndex ?? -1;
+								const missing = data.series
+									.filter((s) => s.data[i] === null && !hidden.includes(s.key))
+									.map((s) => labelFor(s.key));
+								return [
+									`Total: ${money(total)}`,
+									...(missing.length ? [`Unavailable: ${missing.join(', ')}`] : [])
+								];
 							}
 						}
 					}

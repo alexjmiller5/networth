@@ -7,6 +7,7 @@ import { env as privateEnv } from '$env/dynamic/private';
 import type { RequestHandler } from '@sveltejs/kit';
 import { assemble, type EstateTables, type HubRow } from '$lib/finance/assemble';
 import { categoryIconUrl } from '$lib/server/categoryIcons';
+import { INSTRUMENT_COLUMNS, OBSERVATION_COLUMNS, valueEstate } from '$lib/server/prices';
 
 const TXN_COLUMNS = [
 	'id',
@@ -158,6 +159,15 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 	const token = env.SOMA_HUB_TOKEN;
 	if (!hub || !token) throw error(503, 'Finance data is not configured yet.');
 
+	const prices = widgetsOnly ? undefined : platform?.env?.PRICES_DB;
+	// Native NAV and unit observations load alongside the estate, only when prices can use them.
+	const native = prices
+		? Promise.all([
+				pull(hub, token, 'investment_instruments', INSTRUMENT_COLUMNS, fetch),
+				pull(hub, token, 'investment_observations', OBSERVATION_COLUMNS, fetch)
+			])
+		: null;
+	native?.catch(() => undefined);
 	try {
 		// Widgets need balances first. Card categories (for guidance) are best-effort there,
 		// so an unrelated source failure never blocks a balance refresh.
@@ -223,9 +233,27 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 			accounts: selectedAccounts,
 			txns
 		});
+		let valued: Pick<typeof estate, 'coverage' | 'valuations'> = { coverage: estate.coverage };
+		if (native && prices)
+			try {
+				const [instruments, observations] = await native;
+				valued = await valueEstate(
+					estate,
+					prices,
+					instruments,
+					observations,
+					new Date().toISOString().slice(0, 10)
+				);
+			} catch (cause) {
+				// Valuation is additive: without it investments stay explicitly unvalued.
+				console.error('Investment valuation unavailable', {
+					type: cause instanceof Error ? cause.name : 'Unknown'
+				});
+			}
 		return json(
 			{
 				...estate,
+				...valued,
 				categories: estate.categories.map((category) => ({
 					...category,
 					iconUrl: categoryIconUrl(category.icon)

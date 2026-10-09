@@ -12,7 +12,7 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			adapter: adapter({ config: 'svelte.wrangler.jsonc' })
 		})
 	],
 	test: {
