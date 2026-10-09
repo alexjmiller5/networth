@@ -69,12 +69,17 @@ protects the site and every API route.
   Paged pulls have no snapshot guard and are therefore display-only. Unknown
   dates and unresolved instruments never select a current valuation. Custody cash
   is a ledger cross-check, never an additional asset. Evidence keys stay server-side.
-- `/rewards` keeps each native component separate. Known immutable event heads
-  produce earned, pending, redeemed and expired totals; snapshot differences never
-  imply earnings. Unknown amounts, incomplete membership and invalid chains withhold
-  totals. Typed balances partition by basis, period and source time precision;
-  legacy snapshots remain explicitly untyped. Dated posted activity uses exact sums,
-  a 90-day chart window and device-local dates/concealment. See `docs/rewards.md`.
+- `/rewards` keeps each native component separate: one chart per unit with
+  measure, native/dollar lens, bucket, dates and series controls. Known immutable
+  event heads produce earned, pending, redeemed and expired totals; snapshot
+  differences never imply earnings. Undated balances show their latest capture,
+  labelled as a capture, never as a source-dated balance. Earning rate needs card
+  spend proved by `txn -> reward_events` provenance; cap headroom needs observed
+  usage; expiry needs stated deadlines or activity dates. Terms and valuations come
+  only from published `reward_terms` / `redemption_valuations`; unknown stays an
+  explicit diagnostic, never zero. Owner dollars-per-unit values live in
+  `MARKERS_DB.reward_values` (`/api/reward-values`), never Life Data or git; legacy
+  snapshots remain explicitly untyped. See `docs/rewards.md`.
 - Noncash refundable assets (Life Data `assets` + `asset_events`, such as a
   security deposit) are owned principal that counts in net worth but is not
   spendable. `refundable-principal.ts` validates their complete dated events
@@ -109,6 +114,8 @@ protects the site and every API route.
 
 ## Architecture rules
 
+- `MARKERS_DB` holds owner-entered dashboard state: event markers and reward program
+  values (`reward_values`).
 - Interactive event markers use only this project's `MARKERS_DB` D1 binding
   and `migrations/`. Creates carry a stable draft UUID for safe retries; reused
   IDs with different content or deleted IDs conflict. Deletion retains only the
@@ -408,6 +415,14 @@ deploys target his Cloudflare account.
 - Widget balances reuse verified ledger selection and retain per-account source
   dates. Snapshot fetch time is not collection time. The device API projects
   only widget fields and rechecks revocation after slow source reads.
+- The one configurable widget has six views: card balances, which card (per ledger
+  category this quarter, from verified typed earning terms; unknown cards stay
+  unknown and no pick is made unless every card is known), cap headroom, available
+  rewards, expiry and freshness. Reward sections (`rewards`, `expiry`, `caps`,
+  `guidance`) are optional fields of the version 1 snapshot from
+  `widgetRewards()`; a failed rewards or category read omits them
+  (`rewardsUnavailable`, `guidance: null`) without withholding balances. Hide
+  amounts masks every amount in every view.
 - The native app and extension use the same configured App Group and separate
   exact Ad Hoc profiles. `ios/justfile` exposes simulator checks, tests, and a
   release archive through `scripts/sign-widgets.py`. Signing inputs come from

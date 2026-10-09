@@ -76,7 +76,11 @@ it('requires protected same-origin approval before serving a narrow snapshot', a
 	const response = await deviceGET(event('GET', undefined, { token, path: 'snapshot' }));
 	expect(response.status).toBe(200);
 	expect(await response.clone().text()).not.toContain('privateEvidence');
-	expect(await response.json()).toMatchObject({ version: 1, balances: [] });
+	expect(await response.json()).toMatchObject({
+		version: 1,
+		balances: [],
+		rewardsUnavailable: true
+	});
 	expect(financeGET).toHaveBeenLastCalledWith(expect.anything(), true);
 	expect(response.headers.get('cache-control')).toContain('no-store');
 });
@@ -149,4 +153,55 @@ it('enrolls a finance host that cannot read widget snapshots', async () => {
 	expect(await session.json()).toMatchObject({ state: 'active', scope: 'finance-host' });
 	expect((await deviceGET(event('GET', undefined, { token, path: 'snapshot' }))).status).toBe(403);
 	expect(financeGET).not.toHaveBeenCalled();
+});
+
+it('adds reward views from the dedicated reader without exposing evidence', async () => {
+	await stage();
+	await approve();
+	const program = { id: 'p', label: 'Example', provider: 'Example', account_id: null };
+	const hub = vi.fn<typeof fetch>(async (_url, init) => {
+		const { table } = JSON.parse(String(init?.body));
+		const rows: Record<string, unknown[]> = {
+			reward_programs: [program],
+			reward_components: [
+				{
+					id: 'c',
+					program_id: 'p',
+					component_key: 'k',
+					label: 'Points',
+					unit: 'points',
+					role: 'redeemable',
+					currency: null
+				}
+			],
+			points_balances: [
+				{
+					id: 'b',
+					program: 'Example',
+					points: 7,
+					scraped_at: '2030-01-01T00:00:00.000Z',
+					component_id: 'c',
+					exact_amount: '7',
+					basis: 'available',
+					source_date: null,
+					source_as_of: null,
+					period_start: null,
+					period_end_exclusive: null,
+					supersedes_id: null
+				}
+			]
+		};
+		return Response.json({ rows: rows[table] ?? [] });
+	});
+	const request = event('GET', undefined, { token, path: 'snapshot' });
+	Object.assign(request, { fetch: hub });
+	request.platform = {
+		env: { ...platform.env, LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'synthetic' }
+	} as unknown as App.Platform;
+	const body = (await (await deviceGET(request)).json()) as Record<string, unknown>;
+	expect(body.rewards).toMatchObject([{ id: 'c', amount: '7', captured: true, usd: null }]);
+	expect(body.expiry).toMatchObject([{ id: 'c', status: 'unknown' }]);
+	expect(body).toMatchObject({ caps: [], guidance: { categories: [] } });
+	expect(body).not.toHaveProperty('rewardsUnavailable');
+	expect(JSON.stringify(body)).not.toMatch(/evidence|scraped_at|provider/);
 });

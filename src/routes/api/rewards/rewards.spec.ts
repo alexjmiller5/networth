@@ -41,9 +41,14 @@ it('uses the existing dedicated reader and fixed native projections', async () =
 	});
 	const response = await GET(event(fetch));
 	expect(response.headers.get('cache-control')).toBe('private, no-store');
-	expect(await response.json()).toEqual({
+	expect(await response.json()).toMatchObject({
 		programs: [],
 		legacyBalances: [],
-		typedUnavailable: false
+		typedUnavailable: false,
+		valuesUnavailable: true
 	});
+	const tables = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).table);
+	expect(tables).toEqual(
+		expect.arrayContaining(['reward_terms', 'redemption_valuations', 'provenance'])
+	);
 });

@@ -9,9 +9,10 @@ connection code in the browser, and approve the device. Return to the app to
 refresh. Replacement phones enroll independently. Revoke an individual device
 in the website's Widgets page or disconnect in the app.
 
-Add Networth from the Home Screen widget picker. Select the balance or freshness
-view; other approved options show unavailable until their required source rules
-and history are supported. Amount concealment is device-local. Widget refresh
+Add Networth from the Home Screen widget picker, then edit the widget to choose a
+view: card balances, which card (per category this quarter), cap headroom,
+available rewards, expiry or freshness. Cards and programs without verified
+published terms show unknown rather than a guess. Amount concealment is device-local. Widget refresh
 is opportunistic; open the app to fetch a new snapshot. Source dates remain
 independent from fetch time.
 

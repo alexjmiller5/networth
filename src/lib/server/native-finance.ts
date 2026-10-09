@@ -5,7 +5,8 @@ export async function pullNativeTable(
 	token: string,
 	table: string,
 	columns: string[],
-	fetchFn: typeof fetch
+	fetchFn: typeof fetch,
+	where?: Record<string, string>
 ) {
 	const rows: NativeRow[] = [];
 	let after = '';
@@ -15,7 +16,13 @@ export async function pullNativeTable(
 		const response = await fetchFn(`${hub}/v1/rows/pull`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-			body: JSON.stringify({ table, columns, since: '', ...(after ? { after, limit: 200 } : {}) }),
+			body: JSON.stringify({
+				table,
+				columns,
+				since: '',
+				...(where ? { where } : {}),
+				...(after ? { after, limit: 200 } : {})
+			}),
 			signal,
 			redirect: 'manual'
 		});

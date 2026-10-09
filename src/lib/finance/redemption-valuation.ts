@@ -80,7 +80,7 @@ export interface RedemptionValuationInput {
 	valued_at: string;
 }
 
-interface Decimal {
+export interface Decimal {
 	coefficient: bigint;
 	scale: number;
 }
@@ -111,7 +111,7 @@ function date(value: unknown): asserts value is string {
 		'date'
 	);
 }
-function decimal(value: unknown): Decimal {
+export function decimal(value: unknown): Decimal {
 	requireValue(
 		typeof value === 'string' &&
 			value.length <= 102 &&
@@ -127,7 +127,7 @@ function decimal(value: unknown): Decimal {
 	return { coefficient: BigInt(integer + fraction), scale: fraction.length };
 }
 const power = (scale: number) => 10n ** BigInt(scale);
-function canonical(value: Decimal): string {
+export function canonical(value: Decimal): string {
 	const negative = value.coefficient < 0n;
 	let digits = (negative ? -value.coefficient : value.coefficient)
 		.toString()
@@ -138,22 +138,28 @@ function canonical(value: Decimal): string {
 	decimal(result); // Never round an exact result to fit the input/output contract.
 	return result;
 }
-function subtract(a: Decimal, b: Decimal): Decimal {
+export function subtract(a: Decimal, b: Decimal): Decimal {
 	const scale = Math.max(a.scale, b.scale);
 	return {
 		coefficient: a.coefficient * power(scale - a.scale) - b.coefficient * power(scale - b.scale),
 		scale
 	};
 }
-function displayRate(value: Decimal, units: Decimal): string {
-	const numerator = value.coefficient * power(units.scale + 18);
-	const denominator = units.coefficient * power(value.scale);
-	let quotient = numerator / denominator;
-	const twiceRemainder = (numerator % denominator) * 2n;
-	if (twiceRemainder > denominator || (twiceRemainder === denominator && quotient % 2n === 1n))
-		quotient++;
-	return canonical({ coefficient: quotient, scale: 18 });
+export function multiply(a: Decimal, b: Decimal): Decimal {
+	return { coefficient: a.coefficient * b.coefficient, scale: a.scale + b.scale };
 }
+/** Nonnegative value / positive units at a fixed scale, rounded half-even. */
+export function quotient(value: Decimal, units: Decimal, scale: number): string {
+	requireValue(value.coefficient >= 0n && units.coefficient > 0n, 'quotient operands');
+	const numerator = value.coefficient * power(units.scale + scale);
+	const denominator = units.coefficient * power(value.scale);
+	let result = numerator / denominator;
+	const twiceRemainder = (numerator % denominator) * 2n;
+	if (twiceRemainder > denominator || (twiceRemainder === denominator && result % 2n === 1n))
+		result++;
+	return canonical({ coefficient: result, scale });
+}
+const displayRate = (value: Decimal, units: Decimal) => quotient(value, units, 18);
 function idSet(values: string[]): string[] {
 	requireValue(Array.isArray(values), 'leg set');
 	values.forEach(identity);

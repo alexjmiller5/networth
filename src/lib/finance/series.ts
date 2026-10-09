@@ -106,7 +106,7 @@ export function groupSeries(
 }
 
 /** Week buckets anchor on their Monday, months on 'YYYY-MM-01'. */
-function bucketLabel(date: string, bucket: Bucket): string {
+export function bucketLabel(date: string, bucket: Bucket): string {
 	if (bucket === 'day') return date;
 	if (bucket === 'month') return `${date.slice(0, 7)}-01`;
 	const [y, m, d] = date.split('-').map(Number);

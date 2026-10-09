@@ -139,17 +139,33 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 	if (!hub || !token) throw error(503, 'Finance data is not configured yet.');
 
 	try {
-		const pulled: Record<string, HubRow[]> = Object.fromEntries(
+		// Widgets need balances first. Card categories (for guidance) are best-effort there,
+		// so an unrelated source failure never blocks a balance refresh.
+		const optional = ['overlay', 'shares', 'categories'];
+		const pulled: Record<string, HubRow[] | null> = Object.fromEntries(
 			await Promise.all(
 				Object.entries(TABLES).map(async ([t, cols]) => [
 					t,
-					widgetsOnly && !['accounts', 'scrape_runs'].includes(t)
+					widgetsOnly && !['accounts', 'scrape_runs', ...optional].includes(t)
 						? []
-						: await pull(hub, token, HUB_TABLE[t]?.table ?? t, cols, fetch, HUB_TABLE[t]?.where)
+						: await pull(
+								hub,
+								token,
+								HUB_TABLE[t]?.table ?? t,
+								cols,
+								fetch,
+								HUB_TABLE[t]?.where
+							).catch((e) => {
+								if (widgetsOnly && optional.includes(t)) return null;
+								throw e;
+							})
 				])
 			)
 		);
-		const { accounts } = pulled;
+		// Partial category data would mislabel spend: use none of it.
+		const categoriesUnavailable = optional.some((t) => pulled[t] === null);
+		if (categoriesUnavailable) for (const t of optional) pulled[t] = [];
+		const { accounts } = pulled as Record<string, HubRow[]>;
 		// Reuse registry normalization, including both supported closure fields.
 		const cardIds = widgetsOnly
 			? new Set(
@@ -193,7 +209,8 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 				categories: estate.categories.map((category) => ({
 					...category,
 					iconUrl: categoryIconUrl(category.icon)
-				}))
+				})),
+				...(widgetsOnly ? { categoriesUnavailable } : {})
 			},
 			{
 				headers: { 'cache-control': 'private, no-store' }

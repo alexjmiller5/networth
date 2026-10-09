@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	selectRewardEventHeads,
 	selectRedemptionValuationHeads,
+	selectRewardTermHeads,
 	type RewardEventVersion,
 	type RedemptionValuationVersion
 } from './reward-history';
@@ -271,5 +272,28 @@ describe('redemption valuation history', () => {
 		);
 		expect(JSON.stringify({ events, rows })).toBe(before);
 		expect(selectRedemptionValuationHeads(events, [])).toEqual([]);
+	});
+});
+
+describe('selectRewardTermHeads', () => {
+	const term = (id: string, supersedes_id: string | null = null, term_key = 'expiry:points') => ({
+		id,
+		program_id: 'program',
+		component_id: 'points',
+		term_key,
+		supersedes_id
+	});
+	it('selects the corrected assertion and keeps separate term keys apart', () => {
+		const groups = selectRewardTermHeads([
+			term('a'),
+			term('b', 'a'),
+			term('c', null, 'cap:dining')
+		]);
+		expect(groups.map((g) => g.head?.id).sort()).toEqual(['b', 'c']);
+	});
+	it('withholds a head for forks instead of choosing one', () => {
+		const [group] = selectRewardTermHeads([term('a'), term('b', 'a'), term('c', 'a')]);
+		expect(group.head).toBeNull();
+		expect(group.diagnostics[0].code).toBe('fork');
 	});
 });

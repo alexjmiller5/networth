@@ -119,7 +119,15 @@ it('loads only open card ledgers for widgets, so unrelated source failures canno
 	});
 	const response = await GET(event(fetch), true);
 	const estate = (await response.json()) as Estate;
-	expect(requested.sort()).toEqual(['accounts', 'scrape_runs', 'txns_bank']);
+	expect(requested.sort()).toEqual([
+		'accounts',
+		'categories',
+		'overlay',
+		'scrape_runs',
+		'shares',
+		'txns_bank'
+	]);
+	expect(estate).toMatchObject({ categoriesUnavailable: true });
 	expect(estate.accounts.map((a) => a.id)).toEqual(['card']);
 	expect(estate.txns.map((t) => t.source_id)).toEqual(['purchase']);
 	expect(estate.coverage).toMatchObject([{ account_id: 'card', status: 'verified' }]);
@@ -311,5 +319,6 @@ it('reads asset evidence as a filtered provenance slice and never returns eviden
 		),
 		true
 	);
-	expect(widgets.sort()).toEqual(['accounts', 'scrape_runs']);
+	// Widgets read card categories (best-effort, for guidance) but never assets or evidence.
+	expect(widgets.sort()).toEqual(['accounts', 'categories', 'overlay', 'scrape_runs', 'shares']);
 });
