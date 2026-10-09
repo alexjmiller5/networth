@@ -215,6 +215,32 @@ describe('investment valuation', () => {
 		expect(missing[0].values).toEqual([2880, null, null]);
 	});
 
+	it('values a verified closed account through its history and keeps one gap per reason', () => {
+		const closed = {
+			...cov('b'),
+			status: 'verified-closed-zero' as const,
+			currentBalance: 0 as const,
+			reasons: [
+				'Current cash and positions verify zero; historical market values remain unavailable'
+			]
+		};
+		const [v] = run({
+			coverage: [closed],
+			txns: [
+				txn('b', '2026-01-05', 1000),
+				txn('b', '2026-01-05', -200, 20, 'AAA'),
+				txn('b', '2026-01-06', 220, -20, 'AAA'),
+				txn('b', '2026-01-06', -1020)
+			],
+			end: '2026-01-07'
+		});
+		expect(v.values).toEqual([1000, 0, 0]);
+		const [missing] = run({ prices: new Map(), end: '2026-01-07' });
+		expect(missing.gaps).toEqual([
+			{ start: '2026-01-05', end: '2026-01-07', reason: 'No tiingo price for AAA' }
+		]);
+	});
+
 	it('never values a negative position', () => {
 		const [v] = run({ txns: [txn('b', '2026-01-05', 100, -1, 'AAA')], end: '2026-01-05' });
 		expect(v.values).toEqual([null]);
