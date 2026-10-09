@@ -9,4 +9,4 @@
 # with `soma token create networth --scopes tables:read` and stored in the
 # project ENV item. The hub URL is a plain var in wrangler.jsonc. CI deploy
 # creds live in deploy.yml.
-SOMA_HUB_TOKEN=op://Networth/Networth ENV/LIFE_HUB_TOKEN
+SOMA_HUB_TOKEN=op://Networth/Networth ENV/SOMA_HUB_TOKEN
