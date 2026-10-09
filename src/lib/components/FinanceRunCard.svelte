@@ -78,8 +78,7 @@
 	const cancel = (id: string) => act(() => request(`/api/finance/runs/${id}/cancel`, 'POST'));
 	function toggle(id: string, on: boolean) {
 		const next = on ? [...selected, id] : selected.filter((s) => s !== id);
-		// Nothing selected snaps back to everything rather than an unrunnable state.
-		save(next.length === 0 || next.length === open.length ? null : next);
+		save(next.length === open.length ? null : next);
 	}
 	function save(next: string[] | null) {
 		chosen = next;
@@ -128,9 +127,11 @@
 							<IconBuildingBank size={16} />
 							{selected.length === open.length
 								? `All accounts (${open.length})`
-								: selected.length === 1
-									? nameOf(selected[0])
-									: `${selected.length} accounts`}
+								: selected.length === 0
+									? 'Choose accounts'
+									: selected.length === 1
+										? nameOf(selected[0])
+										: `${selected.length} accounts`}
 							<IconChevronDown size={16} class="text-muted-foreground" />
 						</Button>
 					{/snippet}
@@ -149,14 +150,20 @@
 							>{account.name}</DropdownMenu.CheckboxItem
 						>
 					{/each}
+					<DropdownMenu.Separator />
 					{#if chosen !== null}
-						<DropdownMenu.Separator />
 						<DropdownMenu.Item onclick={() => save(null)}>Select all</DropdownMenu.Item>
+					{/if}
+					{#if selected.length}
+						<DropdownMenu.Item onclick={() => save([])}>Clear</DropdownMenu.Item>
 					{/if}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<Button class="min-h-9" size="sm" onclick={start} disabled={busy || !loaded}
-				><IconPlayerPlay size={16} />Run</Button
+			<Button
+				class="min-h-9"
+				size="sm"
+				onclick={start}
+				disabled={busy || !loaded || !selected.length}><IconPlayerPlay size={16} />Run</Button
 			>
 		</div>
 	</div>
