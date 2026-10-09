@@ -232,7 +232,7 @@ struct ExpiryRows: View {
             if clocks.isEmpty { Unavailable(title:"Nothing tracked",detail:"No reward units are recorded.") }
             // One summary instead of a wall of identical unknowns; a dated clock always lists.
             if !clocks.isEmpty && clocks.allSatisfy({ $0.status == .unknown }) {
-                Unavailable(title:"Unknown",detail:"None of your \(clocks.count) reward units has a stated deadline or qualifying activity date yet.")
+                Unavailable(title:"Unknown",detail:"No dated expiry for \(clocks.count) reward units.")
             } else {
             ForEach(Array(clocks.prefix(rowLimit))) { clock in
                 VStack(alignment:.leading,spacing:2) {
