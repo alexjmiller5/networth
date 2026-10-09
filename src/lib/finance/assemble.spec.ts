@@ -935,3 +935,99 @@ describe('noncash refundable assets', () => {
 		expect(() => assemble(t)).toThrow();
 	});
 });
+
+describe('points-paid consumption', () => {
+	const base = (): EstateTables => ({
+		...structuredClone(tables),
+		reward_components: [{ id: 'rc', unit: 'points', deleted_at: null }],
+		reward_events: [
+			{
+				id: 're',
+				component_id: 'rc',
+				kind: 'redeem',
+				state: 'posted',
+				event_date: '2026-02-03',
+				supersedes_id: null,
+				deleted_at: null
+			}
+		],
+		redemption_valuations: [
+			{
+				id: 'rv',
+				event_id: 're',
+				currency: 'USD',
+				reward_value: '65.66',
+				category: 'Dining',
+				supersedes_id: null,
+				deleted_at: null
+			}
+		]
+	});
+	const paid = (t: EstateTables) => assemble(t).txns.filter((r) => r.source === 'rewards');
+
+	it('counts a categorized redemption as points-funded spending and never as a balance', () => {
+		expect(paid(base())).toEqual([
+			{
+				source: 'rewards',
+				source_id: 'rv',
+				account_id: null,
+				date: '2026-02-03',
+				amount: -65.66,
+				balanceAmount: null,
+				category: 'Dining',
+				categoryKind: 'spending',
+				fundedBy: 'points',
+				standalone: true,
+				synthetic: false,
+				internal: false,
+				excluded: false
+			}
+		]);
+		const e = assemble(base());
+		const plain = assemble(tables);
+		expect(deriveBalances(e.txns, e.accounts, '2026-02-01', '2026-02-06')).toEqual(
+			deriveBalances(plain.txns, plain.accounts, '2026-02-01', '2026-02-06')
+		);
+		expect(flowSeries(e.txns, '2026-02-03', '2026-02-03', 'day', (t) => t.category).series).toEqual(
+			[{ key: 'Dining', data: [-78.16] }]
+		);
+	});
+
+	it('skips uncategorized, retired, superseded, stale and non-dollar redemptions', () => {
+		const t = base();
+		t.redemption_valuations![0].category = null;
+		expect(paid(t)).toEqual([]);
+		for (const change of [
+			(t: EstateTables) => (t.redemption_valuations![0].deleted_at = '2026-03-01T00:00:00.000Z'),
+			(t: EstateTables) => (t.redemption_valuations![0].currency = 'EUR'),
+			(t: EstateTables) =>
+				t.reward_events!.push({ ...t.reward_events![0], id: 're2', supersedes_id: 're' }),
+			(t: EstateTables) =>
+				t.redemption_valuations!.push({
+					...t.redemption_valuations![0],
+					id: 'rv2',
+					reward_value: '60',
+					supersedes_id: 'rv'
+				})
+		]) {
+			const next = base();
+			change(next);
+			expect(paid(next).map((r) => r.amount)).toEqual(
+				next.redemption_valuations!.length > 1 ? [-60] : []
+			);
+		}
+	});
+
+	it('rejects a categorized redemption with an unknown category, missing event or bad money', () => {
+		for (const change of [
+			(t: EstateTables) => (t.redemption_valuations![0].category = 'Nope'),
+			(t: EstateTables) => (t.reward_events![0].deleted_at = '2026-03-01T00:00:00.000Z'),
+			(t: EstateTables) => (t.reward_events![0].kind = 'earn'),
+			(t: EstateTables) => (t.redemption_valuations![0].reward_value = 'lots')
+		]) {
+			const t = base();
+			change(t);
+			expect(() => assemble(t)).toThrow();
+		}
+	});
+});

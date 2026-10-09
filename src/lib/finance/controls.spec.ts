@@ -435,6 +435,33 @@ describe('page chart view', () => {
 		expect(buildView(txns, accounts, categories, s).total).toBe(20);
 		expect(buildView(txns, accounts, categories, { ...s, cumulativeChoice: true }).total).toBe(20);
 	});
+	it('shows points-paid spending as its own rewards series and only with rewards selected', () => {
+		const txns = [
+			{ account_id: 'account-1', date: min, amount: 100 },
+			{
+				account_id: null,
+				date: '2026-02-02',
+				amount: -65.66,
+				category: 'Category 1',
+				standalone: true,
+				fundedBy: 'points'
+			}
+		];
+		const s = state({ flows: ['spending'], bucket: 'month' });
+		const view = buildView(txns, accounts, categories, s);
+		expect(view.keys).toContain('rewards-paid');
+		expect(view.keys).not.toContain('friend-paid');
+		expect(view.total).toBe(65.66);
+		expect(
+			buildView(txns, accounts, categories, { ...s, balanceSources: ['accounts'] }).total
+		).toBe(0);
+		expect(buildView(txns, accounts, categories, restore()).total).toBe(100);
+		s.groupBy = 'category';
+		expect(buildView(txns, accounts, categories, s).summary).toContainEqual({
+			key: 'Category 1',
+			value: 65.66
+		});
+	});
 	it('keeps all catalog categories in canonical order, including those with no rows', () => {
 		const catalog = Array.from({ length: 30 }, (_, i) => ({
 			id: `c${i}`,

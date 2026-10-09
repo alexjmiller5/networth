@@ -30,6 +30,10 @@ export interface EstateTables {
 	assets?: HubRow[];
 	asset_events?: HubRow[];
 	asset_evidence?: HubRow[];
+	/** Redemptions whose valuation carries a spending category count as points-paid spending. */
+	reward_components?: HubRow[];
+	reward_events?: HubRow[];
+	redemption_valuations?: HubRow[];
 }
 
 export interface Estate {
@@ -290,7 +294,7 @@ export function assemble(t: EstateTables): Estate {
 	}
 	if (shares.size) throw new Error('Finance share parent is missing');
 	const noncash = noncashAssets(t, txnByKey, shareById, accountOf);
-	txns.push(...standalone, ...noncash.ledger);
+	txns.push(...standalone, ...pointsPaid(t, categoryKind), ...noncash.ledger);
 	txns.sort((a, b) => a.date.localeCompare(b.date));
 
 	const latestRun = new Map<string, HubRow>();
@@ -418,6 +422,48 @@ export function assemble(t: EstateTables): Estate {
 		scrapedAt: timestamp(p.scraped_at)
 	}));
 	return { accounts, txns, categories, points, coverage, assets: noncash.assets };
+}
+
+/** Categorized redemption valuations become spending funded by native units: a dated,
+ * account-less row worth the frozen reward value. Only chain heads count; balances never see them. */
+function pointsPaid(t: EstateTables, categoryKind: (name: string) => CategoryKind): Txn[] {
+	const valuations = (t.redemption_valuations ?? []).filter(live);
+	const events = new Map((t.reward_events ?? []).filter(live).map((e) => [id(e.id), e]));
+	const unitOf = new Map(
+		(t.reward_components ?? []).filter(live).map((c) => [id(c.id), str(c.unit)])
+	);
+	const replaced = new Set(
+		[...valuations, ...events.values()].flatMap((r) =>
+			r.supersedes_id == null ? [] : [str(r.supersedes_id)]
+		)
+	);
+	return valuations.flatMap((v): Txn[] => {
+		if (v.category == null || replaced.has(id(v.id))) return [];
+		const e = events.get(str(v.event_id));
+		if (e?.kind !== 'redeem' || e.state !== 'posted')
+			throw new Error('Points-paid redemption is missing its posted event');
+		const amount = -num(v.reward_value);
+		// ponytail: dollars only, like every other flow here; other currencies stay unavailable.
+		if (replaced.has(id(e.id)) || v.currency !== 'USD' || !amount) return [];
+		const category = str(v.category);
+		return [
+			{
+				source: 'rewards',
+				source_id: id(v.id),
+				account_id: null,
+				date: date(e.event_date ?? e.posted_date),
+				amount,
+				balanceAmount: null,
+				category,
+				categoryKind: categoryKind(category),
+				fundedBy: id(unitOf.get(str(e.component_id))),
+				standalone: true,
+				synthetic: false,
+				internal: false,
+				excluded: false
+			}
+		];
+	});
 }
 
 const ASSET_KINDS = ['security_deposit'];

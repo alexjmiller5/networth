@@ -33,6 +33,12 @@ protects the site and every API route.
   Shares, categories, exclusions, and stated balances never overwrite raw
   amounts. Stated balances are verification evidence only.
 - Synthetic openings and internal transfers affect balances, not spending.
+- A redemption whose `redemption_valuations.category` is set is points-paid
+  consumption: one account-less spending row (source `rewards`, `fundedBy` its
+  native unit) worth the frozen `reward_value` on the redeem event's source date.
+  Only USD valuation and event chain heads count; it never moves a balance, and a
+  redemption without a category is not spending. It charts as Points-paid (gift
+  icon) under Wallets & rewards, and in its category when grouped by category.
 - Chart and Overview share selectors and filters. Overview uses closing
   balances or period flow totals, with unavailable values distinct from zero.
   Both views keep the same width and selector positions. Date controls are

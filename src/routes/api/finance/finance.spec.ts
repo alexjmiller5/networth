@@ -322,3 +322,32 @@ it('reads asset evidence as a filtered provenance slice and never returns eviden
 	// Widgets read card categories (best-effort, for guidance) but never assets or evidence.
 	expect(widgets.sort()).toEqual(['accounts', 'categories', 'overlay', 'scrape_runs', 'shares']);
 });
+
+it('returns a categorized redemption as points-paid spending outside every account', async () => {
+	const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const rows: Record<string, unknown[]> = {
+			accounts: [account('account-1')],
+			categories: [{ id: 'dining', name: 'Dining', kind: 'spending', icon: 'tabler:x', sort: 1 }],
+			reward_components: [{ id: 'rc', unit: 'points' }],
+			reward_events: [
+				{ id: 're', component_id: 'rc', kind: 'redeem', state: 'posted', event_date: '2026-08-27' }
+			],
+			redemption_valuations: [
+				{ id: 'rv', event_id: 're', currency: 'USD', reward_value: '65.66', category: 'Dining' }
+			]
+		};
+		return Response.json({ rows: rows[JSON.parse(String(init?.body)).table] ?? [] });
+	});
+	const estate = (await (await GET(event(fetch))).json()) as Estate;
+	expect(estate.txns.filter((t) => t.fundedBy)).toEqual([
+		expect.objectContaining({
+			source: 'rewards',
+			account_id: null,
+			date: '2026-08-27',
+			amount: -65.66,
+			balanceAmount: null,
+			category: 'Dining',
+			fundedBy: 'points'
+		})
+	]);
+});

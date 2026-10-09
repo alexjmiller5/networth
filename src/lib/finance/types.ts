@@ -80,6 +80,8 @@ export interface Txn {
 	shares?: TxnShare[];
 	/** A share with no bank row behind it (a friend paid): spending only, no account, no balance. */
 	standalone?: boolean;
+	/** Native reward unit that paid for a standalone consumption row (a points-paid dinner), never cash. */
+	fundedBy?: string;
 	/** Signed principal of an unsplit row linked to a noncash asset; flows leave it out. */
 	principal?: number;
 }
