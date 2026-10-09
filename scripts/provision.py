@@ -7,7 +7,6 @@
 The provisioning credential only mints replacements. Save the new value,
 deploy and verify before retiring the previous token by its provider ID.
 """
-import json
 import os
 import subprocess
 import sys
@@ -70,25 +69,7 @@ def deployment_account() -> str:
         return account_id(c)
 
 
-def mint_hub_token() -> str:
-    """Use the caller's configured life CLI/admin access, never another app's token."""
-    def soma_json(*args):
-        result = subprocess.run(["soma", "token", *args], capture_output=True, text=True)
-        if result.returncode:
-            raise RuntimeError("soma token command failed; check the configured hub and admin access")
-        return json.loads(result.stdout)
-
-    if any(t["name"] == NAME and not t.get("revoked_at") for t in soma_json("list")):
-        raise RuntimeError("A networth hub token already exists. Restore its stored value before provisioning again.")
-    result = soma_json("create", NAME, "--scopes", "tables:read")
-    if result.get("scopes") != "tables:read" or not result.get("token"):
-        raise RuntimeError("Hub did not return a read-only token")
-    log("Scoped read-only hub token minted")
-    return result["token"]
-
-
-FIELDS.append("SOMA_HUB_TOKEN")
-MINTERS = {"api-token": mint_deploy_token, "account-id": deployment_account, "SOMA_HUB_TOKEN": mint_hub_token}
+MINTERS = {"api-token": mint_deploy_token, "account-id": deployment_account}
 
 
 def main() -> None:

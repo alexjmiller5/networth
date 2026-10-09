@@ -8,7 +8,10 @@ protects the site and every API route.
 
 - `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` is
   server configuration;
-  `SOMA_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
+  `SOMA_HUB_TOKEN` is this server's own Soma credential, enrolled with a
+  read-only profile (broad `tables:read`, since reward and asset reads take
+  `provenance` slices no table-scoped grant can name); it is never minted by
+  `scripts/provision.py`. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
   enabled for the public URL read path. Local runtime tests cannot prove
@@ -407,7 +410,10 @@ deploys target his Cloudflare account.
   GET session, GET snapshot and DELETE session. A native device generates a
   random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
   reaches the approval page. No Soma, operator or browser credential goes
-  to native consumers. Public callers cannot stage or approve enrollment.
+  to native consumers. This is the app-owned consumer pattern: the widget is
+  Networth's consumer (its own `nw_` credential, `WIDGETS_DB`), and Networth
+  alone is Soma's consumer; `/api/device/*` reads Soma server-side with
+  `SOMA_HUB_TOKEN` and returns only projected widget fields. Public callers cannot stage or approve enrollment.
 - Pending enrollment expires in ten minutes. Exact retries preserve expiry;
   conflicting identity and revoked fingerprints cannot be reactivated. The
   owner may revoke one device; an offline cached snapshot cannot be remotely
