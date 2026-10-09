@@ -57,7 +57,7 @@ struct NetworthWidgetView: View {
                 .frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
                 .clipped()
                 if let fetched=parseSourceDate(snapshot.fetchedAt) {
-                    Text("Saved \(fetched.formatted(date:.abbreviated,time:.shortened))").font(.caption2).foregroundStyle(.secondary)
+                    Text("Saved \(fetched.formatted(family == .systemSmall ? .dateTime.month(.abbreviated).day().hour().minute() : .dateTime.month(.abbreviated).day().year().hour().minute()))").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             } else {
                 Text("Open Networth").font(.headline)
@@ -94,6 +94,20 @@ struct Unavailable: View {
         Text(detail).font(.caption).foregroundStyle(.secondary)
     }
 }
+/** Two facts side by side when they fit, stacked when they do not (small widgets, long names). */
+struct Pair<Leading: View, Trailing: View>: View {
+    let leading: Leading
+    let trailing: Trailing
+    init(@ViewBuilder leading: () -> Leading, @ViewBuilder trailing: () -> Trailing) {
+        self.leading = leading(); self.trailing = trailing()
+    }
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment:.firstTextBaseline) { leading; Spacer(minLength:4); trailing }
+            VStack(alignment:.leading,spacing:1) { leading; trailing }
+        }
+    }
+}
 struct ViewTitle: View {
     let text: LocalizedStringKey
     var body:some View { Text(text).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
@@ -108,9 +122,9 @@ struct BalanceRows: View {
         ForEach(Array(snapshot.balances.prefix(rowLimit))) { balance in
             let source=balance.asOf.flatMap(parseSourceDate).map { $0.formatted(.dateTime.month().day().year()) } ?? String(localized:"No source date")
             VStack(alignment:.leading,spacing:2) {
-                HStack(alignment:.firstTextBaseline) {
+                Pair {
                     Text(balance.label).font(.caption).lineLimit(1)
-                    Spacer(minLength:4)
+                } trailing: {
                     if view == .balances {
                         Text(balance.displayAmount(concealed:concealed)).font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     }
@@ -140,9 +154,9 @@ struct GuidanceRows: View {
             }
             ForEach(Array(guidance.categories.prefix(rowLimit))) { category in
                 VStack(alignment:.leading,spacing:2) {
-                    HStack(alignment:.firstTextBaseline) {
+                    Pair {
                         Text(category.category).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Spacer(minLength:4)
+                    } trailing: {
                         Text(category.displaySpent(concealed:concealed)).font(.caption2).monospacedDigit().foregroundStyle(.secondary)
                     }
                     if let card=category.pickedCard {
@@ -169,9 +183,9 @@ struct CapRows: View {
             if caps.isEmpty { Unavailable(title:"No caps",detail:"No published cap terms apply to your programs.") }
             ForEach(Array(caps.prefix(rowLimit))) { cap in
                 VStack(alignment:.leading,spacing:5) {
-                    HStack(alignment:.firstTextBaseline) {
+                    Pair {
                         Text(cap.program).font(.caption).lineLimit(1)
-                        Spacer(minLength:4)
+                    } trailing: {
                         Text(cap.displayRemaining(concealed:concealed)).font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     }
                     if let fraction=cap.usedFraction { ProgressView(value:fraction).accessibilityLabel("Share of cap used") }
@@ -191,15 +205,15 @@ struct RewardRows: View {
             if rewards.isEmpty { Unavailable(title:"None observed",detail:"No reward balances have been captured.") }
             ForEach(Array(rewards.prefix(rowLimit))) { reward in
                 VStack(alignment:.leading,spacing:2) {
-                    HStack(alignment:.firstTextBaseline) {
+                    Pair {
                         Text(reward.program).font(.caption).lineLimit(1)
-                        Spacer(minLength:4)
+                    } trailing: {
                         Text(reward.sourceLabel).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    HStack(alignment:.firstTextBaseline) {
+                    Pair {
                         Text(reward.displayAmount(concealed:concealed)).font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    } trailing: {
                         if !concealed, let value=reward.displayValue(concealed:concealed) {
-                            Spacer(minLength:4)
                             Text(value).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         }
                     }
@@ -222,9 +236,9 @@ struct ExpiryRows: View {
             } else {
             ForEach(Array(clocks.prefix(rowLimit))) { clock in
                 VStack(alignment:.leading,spacing:2) {
-                    HStack(alignment:.firstTextBaseline) {
+                    Pair {
                         Text(clock.program).font(.caption).lineLimit(1)
-                        Spacer(minLength:4)
+                    } trailing: {
                         Text(clock.headline(today:today)).font(.subheadline.weight(.semibold)).lineLimit(1)
                     }
                     Text(clock.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(clock.status == .unknown ? 2 : 1)
