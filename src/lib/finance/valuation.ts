@@ -119,7 +119,11 @@ export function valueAccounts(input: {
 		const start = rows[0].date;
 		const dates = dateRange(start, end);
 		const coverage = input.coverage.find((c) => c.account_id === account.id);
-		const blockers = (coverage?.reasons ?? []).filter((r) => r !== GENERIC);
+		// Coverage reasons are failures, except a verified closed account's own note.
+		const blockers =
+			coverage?.status === 'verified-closed-zero'
+				? []
+				: (coverage?.reasons ?? []).filter((r) => r !== GENERIC);
 		if (!coverage || coverage.basis === 'none') blockers.push('No reconciliation checkpoint');
 		// A workplace plan exposes no custody cash: contributions buy units directly.
 		const custodyCash = coverage?.basis === 'money';
@@ -210,7 +214,7 @@ export function valueAccounts(input: {
 				const p = m && latest(prices.get(priceKey(m)), date);
 				if (qty < 0) reason = `Negative ${ticker} position`;
 				else if (!m) reason = `No price source for ${ticker}`;
-				else if (!p) reason = `No ${m.provider} price for ${ticker} by ${date}`;
+				else if (!p) reason = `No ${m.provider} price for ${ticker}`;
 				else if (days(p.date, date) > MAX_PRICE_AGE_DAYS || newerMarketDay(p.date, date))
 					reason = `Latest ${m.provider} price for ${ticker} is from ${p.date}`;
 				else {
