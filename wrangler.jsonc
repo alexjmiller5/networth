@@ -25,6 +25,12 @@
 			"database_name": "networth-markers",
 			"database_id": "da87045c-3f3a-4663-a3fb-eedf28c856b4",
 			"migrations_dir": "migrations"
+		},
+		{
+			"binding": "FINANCE_RUNS_DB",
+			"database_name": "networth-finance-runs",
+			"database_id": "c6d75a4c-4bc1-4cab-94e9-08fc62cbe126",
+			"migrations_dir": "migrations-finance-runs"
 		}
 	],
 	"secrets": { "required": ["LIFE_HUB_TOKEN"] },

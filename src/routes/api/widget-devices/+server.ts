@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { WidgetDevices, validWidgetId } from '$lib/server/widget-devices';
+import { WidgetDevices, validWidgetId, type DeviceKind } from '$lib/server/widget-devices';
 import {
 	widgetBody,
 	widgetDatabase,
@@ -24,7 +24,7 @@ const mutate: RequestHandler = async ({ platform, request, url }) => {
 	if (!body) return fail(400, 'Invalid device request.');
 	const stage = request.method === 'POST' && body.action === 'stage';
 	const keys = stage
-		? ['action', 'id', 'hash', 'label']
+		? ['action', 'id', 'hash', 'label', 'kind']
 		: request.method === 'DELETE'
 			? ['id']
 			: ['action', 'id'];
@@ -41,7 +41,8 @@ const mutate: RequestHandler = async ({ platform, request, url }) => {
 			typeof body.label !== 'string' ||
 			!body.label.trim() ||
 			body.label.trim().length > 100 ||
-			/[\u0000-\u001f\u007f]/.test(body.label))
+			/[\u0000-\u001f\u007f]/.test(body.label) ||
+			(body.kind !== undefined && body.kind !== 'widget' && body.kind !== 'host'))
 	)
 		return fail(400, 'Invalid device request.');
 	const db = widgetDatabase(platform);
@@ -50,7 +51,12 @@ const mutate: RequestHandler = async ({ platform, request, url }) => {
 	try {
 		if (stage) {
 			const device = await store.stage(
-				{ id: body.id, hash: body.hash as string, label: body.label as string },
+				{
+					id: body.id,
+					hash: body.hash as string,
+					label: body.label as string,
+					kind: body.kind as DeviceKind | undefined
+				},
 				Date.now()
 			);
 			return json(device, { status: 201, headers });

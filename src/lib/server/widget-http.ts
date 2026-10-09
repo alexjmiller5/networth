@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { WidgetDevices, type WidgetDevice } from './widget-devices';
 export const widgetHeaders = { 'cache-control': 'private, no-store' };
 export const widgetFailure = (status: number, error: string) =>
 	json({ error }, { status, headers: widgetHeaders });
@@ -9,7 +10,10 @@ export function widgetOwner(request: Request): boolean {
 export function widgetDatabase(platform: App.Platform | undefined): D1Database | undefined {
 	return (platform?.env as (Env & { WIDGETS_DB?: D1Database }) | undefined)?.WIDGETS_DB;
 }
-export async function widgetBody(request: Request): Promise<Record<string, unknown> | null> {
+export async function widgetBody(
+	request: Request,
+	limit = 2048
+): Promise<Record<string, unknown> | null> {
 	if (request.headers.get('content-type')?.split(';')[0] !== 'application/json') return null;
 	const reader = request.body?.getReader();
 	if (!reader) return null;
@@ -21,7 +25,7 @@ export async function widgetBody(request: Request): Promise<Record<string, unkno
 			const { done, value } = await reader.read();
 			if (done) break;
 			size += value.byteLength;
-			if (size > 2048) {
+			if (size > limit) {
 				await reader.cancel();
 				return null;
 			}
@@ -37,4 +41,19 @@ export async function widgetBody(request: Request): Promise<Record<string, unkno
 	} finally {
 		reader.releaseLock();
 	}
+}
+
+/** Bearer auth for an approved finance host device; any other caller gets the failure response. */
+export async function hostDevice(
+	platform: App.Platform | undefined,
+	request: Request
+): Promise<WidgetDevice | Response> {
+	const db = widgetDatabase(platform);
+	if (!db) return widgetFailure(503, 'Hosts are not configured.');
+	const token = /^Bearer (nw_[0-9a-f]{64})$/.exec(request.headers.get('authorization') ?? '')?.[1];
+	const device = token ? await new WidgetDevices(db).authenticate(token, Date.now()) : null;
+	if (!device) return widgetFailure(401, 'Enroll this host in Networth.');
+	if (device.kind !== 'host' || device.state !== 'active')
+		return widgetFailure(403, 'Host approval is required or has expired or been revoked.');
+	return device;
 }

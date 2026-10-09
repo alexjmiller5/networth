@@ -1,6 +1,9 @@
+/** Widgets read balance snapshots; a host claims finance review runs. */
+export type DeviceKind = 'widget' | 'host';
 export interface WidgetDevice {
 	id: string;
 	label: string;
+	kind: DeviceKind;
 	created_at: number;
 	expires_at: number;
 	approved_at: number | null;
@@ -8,7 +11,7 @@ export interface WidgetDevice {
 	state: 'pending' | 'active' | 'expired' | 'revoked';
 }
 type StoredDevice = Omit<WidgetDevice, 'state'> & { hash: string };
-const columns = 'id, hash, label, created_at, expires_at, approved_at, revoked_at';
+const columns = 'id, hash, label, kind, created_at, expires_at, approved_at, revoked_at';
 export const validWidgetId = (id: unknown): id is string =>
 	typeof id === 'string' &&
 	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id);
@@ -33,11 +36,12 @@ function view(row: StoredDevice, now: number): WidgetDevice {
 export class WidgetDevices {
 	constructor(private db: D1Database) {}
 	async stage(
-		input: { id: string; hash: string; label: string },
+		input: { id: string; hash: string; label: string; kind?: DeviceKind },
 		now: number
 	): Promise<WidgetDevice> {
-		const { id, hash, label } = input;
+		const { id, hash, label, kind = 'widget' } = input;
 		if (
+			(kind !== 'widget' && kind !== 'host') ||
 			!validWidgetId(id) ||
 			typeof hash !== 'string' ||
 			!/^[0-9a-f]{64}$/.test(hash) ||
@@ -50,11 +54,11 @@ export class WidgetDevices {
 		// One atomic insert contains the capacity check. Public callers cannot stage.
 		const row = await this.db
 			.prepare(
-				`INSERT INTO widget_devices (id, hash, label, created_at, expires_at)
-   SELECT ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM widget_devices WHERE revoked_at IS NULL AND (approved_at IS NOT NULL OR expires_at > ?)) < 100
+				`INSERT INTO widget_devices (id, hash, label, kind, created_at, expires_at)
+   SELECT ?, ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM widget_devices WHERE revoked_at IS NULL AND (approved_at IS NOT NULL OR expires_at > ?)) < 100
    ON CONFLICT DO NOTHING RETURNING ${columns}`
 			)
-			.bind(id, hash, label.trim(), now, now + 600000, now)
+			.bind(id, hash, label.trim(), kind, now, now + 600000, now)
 			.first<StoredDevice>();
 		if (row) return view(row, now);
 		const old = await this.db
@@ -65,6 +69,7 @@ export class WidgetDevices {
 			!old ||
 			old.hash !== hash ||
 			old.label !== label.trim() ||
+			old.kind !== kind ||
 			old.revoked_at !== null ||
 			(old.approved_at === null && old.expires_at <= now)
 		)

@@ -30,11 +30,16 @@ const handle: RequestHandler = async (event) => {
 				return new Response(null, { status: 204, headers });
 			}
 			return json(
-				{ id: device.id, state: device.state, expiresAt: device.expires_at, scope: 'widgets:read' },
+				{
+					id: device.id,
+					state: device.state,
+					expiresAt: device.expires_at,
+					scope: device.kind === 'host' ? 'finance-host' : 'widgets:read'
+				},
 				{ headers }
 			);
 		}
-		if (device.state !== 'active')
+		if (device.state !== 'active' || device.kind !== 'widget')
 			return fail(403, 'Device approval is required or has expired or been revoked.');
 		const response = await financeGET(event, true);
 		if (!response.ok) return fail(502, 'The latest snapshot is unavailable.');

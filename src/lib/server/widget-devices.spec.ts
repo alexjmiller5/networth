@@ -10,7 +10,8 @@ const secret = `nw_${'01'.repeat(32)}`;
 let hash: string;
 beforeEach(async () => {
 	sqlite = new DatabaseSync(':memory:');
-	sqlite.exec(readFileSync('migrations-widgets/0001_devices.sql', 'utf8'));
+	for (const m of ['0001_devices', '0002_device_kind'])
+		sqlite.exec(readFileSync(`migrations-widgets/${m}.sql`, 'utf8'));
 	const db = {
 		prepare(sql: string) {
 			const stmt = sqlite.prepare(sql);
@@ -101,4 +102,28 @@ it('validates enrollment inputs and bounds pending and active registry capacity'
 	expect(await store.stage({ id, hash, label: 'New after expiry' }, now + 600001)).toMatchObject({
 		state: 'pending'
 	});
+});
+it('records host devices separately from widgets and keeps the kind through replay', async () => {
+	expect(await store.stage({ id, hash, label: 'Mac mini', kind: 'host' }, now)).toMatchObject({
+		kind: 'host',
+		state: 'pending'
+	});
+	expect(await store.stage({ id, hash, label: 'Mac mini', kind: 'host' }, now + 1)).toMatchObject({
+		kind: 'host'
+	});
+	await expect(store.stage({ id, hash, label: 'Mac mini' }, now + 2)).rejects.toThrow();
+	await store.approve(id, now + 3);
+	expect(await store.authenticate(secret, now + 4)).toMatchObject({
+		kind: 'host',
+		state: 'active'
+	});
+	expect(
+		await store.stage(
+			{ id: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb', hash: '0'.repeat(64), label: 'Phone' },
+			now
+		)
+	).toMatchObject({ kind: 'widget' });
+	await expect(
+		store.stage({ id, hash, label: 'x', kind: 'admin' as 'host' }, now)
+	).rejects.toThrow();
 });

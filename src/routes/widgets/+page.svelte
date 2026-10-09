@@ -3,7 +3,7 @@
 	import Seo from '$lib/components/seo.svelte';
 	import type { WidgetDevice } from '$lib/server/widget-devices';
 	let devices: WidgetDevice[] = $state([]);
-	let candidate: { id: string; hash: string } | null = $state(null);
+	let candidate: { id: string; hash: string; kind: 'widget' | 'host' } | null = $state(null);
 	let label = $state('');
 	let busy = $state(false);
 	let staged = $state(false);
@@ -20,14 +20,15 @@
 			const id = params.get('id'),
 				hash = params.get('hash');
 			if (!id || !hash) return;
-			candidate = { id, hash };
-			label = params.get('label') ?? 'My phone';
+			const kind = params.get('kind') === 'host' ? 'host' : 'widget';
+			candidate = { id, hash, kind };
+			label = params.get('label') ?? (kind === 'host' ? 'Finance host' : 'My phone');
 			history.replaceState(null, '', location.pathname);
 			staged = false;
 			busy = true;
 			error = '';
 			notice = '';
-			send('POST', { action: 'stage', id, hash, label })
+			send('POST', { action: 'stage', id, hash, label, kind })
 				.then(() => {
 					if (candidate?.id === id) staged = true;
 				})
@@ -61,8 +62,11 @@
 		notice = '';
 		try {
 			await send('POST', { action: 'approve', id: candidate.id });
+			const host = candidate.kind === 'host';
 			candidate = null;
-			notice = 'Device approved. Return to the Networth app and check its connection.';
+			notice = host
+				? 'Host approved. Its enrollment command finishes on its own.'
+				: 'Device approved. Return to the Networth app and check its connection.';
 			await readDevices();
 		} catch (e) {
 			error = (e as Error).message;
@@ -103,8 +107,10 @@
 		<section class="space-y-4 rounded-lg border p-5">
 			<h2 class="text-lg font-semibold">Connect a device</h2>
 			<p>
-				Approve only a request you just started in the Networth app. Compare this code with your
-				phone: <strong class="font-mono">{candidate.hash.slice(0, 8).toUpperCase()}</strong>
+				Approve only a request you just started {candidate.kind === 'host'
+					? 'with networth-host enroll. Compare this code with its terminal'
+					: 'in the Networth app. Compare this code with your phone'}:
+				<strong class="font-mono">{candidate.hash.slice(0, 8).toUpperCase()}</strong>
 			</p>
 			<label class="grid gap-2"
 				>Device name<input
@@ -115,8 +121,9 @@
 				/></label
 			>
 			<p class="text-sm text-muted-foreground">
-				This device can read widget snapshots. It cannot edit finances, make payments, redeem
-				rewards, or start collection.
+				{candidate.kind === 'host'
+					? 'This computer can pick up finance reviews you start from the dashboard and report their progress. It cannot read balances, edit finances, make payments, or redeem rewards.'
+					: 'This device can read widget snapshots. It cannot edit finances, make payments, redeem rewards, or start collection.'}
 			</p>
 			<button
 				class="rounded-md bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
@@ -133,7 +140,10 @@
 			<div class="flex items-center justify-between gap-4 border-b py-3">
 				<div>
 					<p class="font-medium">{device.label}</p>
-					<p class="text-sm capitalize text-muted-foreground">{device.state}</p>
+					<p class="text-sm text-muted-foreground">
+						{device.kind === 'host' ? 'Finance host' : 'Widgets'} ·
+						<span class="capitalize">{device.state}</span>
+					</p>
 				</div>
 				{#if device.state === 'active' || device.state === 'pending'}<button
 						class="rounded-md border px-3 py-2 disabled:opacity-50"

@@ -401,3 +401,30 @@ deploys target his Cloudflare account.
   the caller's credential provider; the helper verifies both exported targets
   and removes its temporary keychain and profile copies. Native enrollment is
   device state and must be repeated on replacement phones.
+
+## Finance review runs
+
+- The dashboard queues runs in Networth's own `FINANCE_RUNS_DB`
+  (`networth-finance-runs`, `migrations-finance-runs/`). A partial unique index
+  allows one queued/claimed/running run; `request_id` makes Run idempotent.
+  Browser routes `/api/finance/runs` (GET, POST) and `/api/finance/runs/{id}/cancel`
+  require Access plus same-origin mutations. Cancel ends a queued run at once
+  and flags a claimed run for the host.
+- The host is a `widget_devices` row with `kind = 'host'`, enrolled through the
+  same `/widgets` approval (`#...&kind=host`). Host devices cannot read widget
+  snapshots and widget devices cannot claim runs. Only
+  `/api/finance-host/v1/claim` and `/api/finance-host/v1/runs/*` bypass Access;
+  each request re-authenticates the bearer. A host sees and reports only runs it
+  claimed, forward transitions only.
+- `host/` is the installed companion (stdlib Python, flake package plus
+  `darwinModules.default`). It long-polls claim (25 s holds, 2 s server checks),
+  opens a Herdr tab, starts Claude and falls back to Codex when Claude cannot
+  start or shows a usage limit, prompts the instruction with the account ids
+  unchanged, and reports tab, pane, agent name and kind. It holds no collection
+  logic. Its credential lives in the login Keychain (`security -A` item), read
+  only by the launchd agent; agent panes cannot read the Keychain, so
+  `networth-host report` queues a file the daemon delivers. A restarted daemon
+  resumes its claimed run and adopts an existing agent instead of relaunching.
+- Tests: `bun run test` (store, routes, devices) and
+  `cd host && uv run --no-project --with pytest pytest -q tests`. The nix build
+  runs the host tests too.
