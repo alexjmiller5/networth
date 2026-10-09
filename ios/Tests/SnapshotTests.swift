@@ -46,6 +46,8 @@ struct SnapshotTests {
 }
 
 struct RewardSnapshotTests {
+    let today = parseSourceDate("2030-05-10T12:00:00Z")!
+    var utc: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(secondsFromGMT: 0)!; return c }
     let rewards = #"{"version":1,"fetchedAt":"2030-05-10T12:00:00.000Z","balances":[],"rewards":[{"id":"m","program":"Example Air","label":"Miles","unit":"miles","amount":"48389","asOf":"2030-05-01T06:00:00.000Z","captured":true,"pending":null,"usd":"580.67","estimated":true},{"id":"c","program":"Example Card","label":"Cash","unit":"USD","amount":"17.8","asOf":"2030-04-30","captured":false,"pending":"2.5","usd":"17.8","estimated":false}],"expiry":[{"id":"h","program":"Example Hotel","unit":"points","status":"scheduled","expiresOn":"2031-08-24","verified":true,"reason":"Provider-stated deadline."},{"id":"m","program":"Example Air","unit":"miles","status":"unknown","expiresOn":null,"verified":false,"reason":"No expiry terms are published for this unit."},{"id":"c","program":"Example Card","unit":"USD","status":"none","expiresOn":null,"verified":false,"reason":"Public program policy: no scheduled expiry. Not verified for this account."}],"caps":[{"id":"p:q","program":"Example Card","status":"available","unit":"USD","limit":"2500","used":"600.5","remaining":"1899.5","resetsOn":"2030-07-01","reason":null},{"id":"p:r","program":"Other Card","status":"unavailable","unit":"USD","limit":"1500","used":null,"remaining":null,"resetsOn":null,"reason":"Cap usage has not been observed for this account."}],"guidance":{"periodStart":"2030-04-01","periodEnd":"2030-07-01","categories":[{"category":"Dining","spent":"60","pick":"b","cards":[{"id":"a","label":"Card A","status":"rate","rate":"0.01","unit":"USD","value":"0.01","estimated":false,"headroom":null},{"id":"b","label":"Card B","status":"rate","rate":"3","unit":"points","value":"0.03","estimated":true,"headroom":"2400"}]},{"category":"Groceries","spent":"100","pick":null,"cards":[{"id":"a","label":"Card A","status":"unknown","rate":null,"unit":null,"value":null,"estimated":false,"headroom":null}]}]}}"#
 
     @Test func decodesRewardSectionsWithExactTextAndExplicitUnknowns() throws {
@@ -56,9 +58,13 @@ struct RewardSnapshotTests {
         #expect(snapshot.rewards?[0].displayValue(concealed: false) == "≈ $580.67")
         #expect(snapshot.rewards?[0].sourceLabel.hasPrefix("Captured") == true)
         #expect(snapshot.rewards?[1].sourceLabel.hasPrefix("As of") == true)
-        #expect(snapshot.expiry?[1].headline(today: "2030-05-10") == "Unknown")
-        #expect(snapshot.expiry?[0].headline(today: "2030-05-10") == "471 days")
-        #expect(snapshot.expiry?[2].headline(today: "2030-05-10") == "No scheduled expiry")
+        #expect(snapshot.expiry?[1].headline(today: today, calendar: utc) == "Unknown")
+        #expect(snapshot.expiry?[0].headline(today: today, calendar: utc) == "471 days")
+        #expect(snapshot.expiry?[2].headline(today: today, calendar: utc) == "No scheduled expiry")
+        // Late evening in a western time zone is still the local calendar day.
+        var pacific = Calendar(identifier: .gregorian)
+        pacific.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        #expect(snapshot.expiry?[0].days(from: parseSourceDate("2030-05-10T05:00:00Z")!, calendar: pacific) == 472)
         #expect(snapshot.caps?[0].displayRemaining(concealed: false) == "$1,899.50 left")
         #expect(snapshot.caps?[1].displayRemaining(concealed: false) == "Unavailable")
         let dining = try #require(snapshot.guidance?.categories.first)
@@ -71,7 +77,8 @@ struct RewardSnapshotTests {
         #expect(snapshot.rewards?.allSatisfy { $0.displayAmount(concealed: true) == "Hidden" && ($0.displayValue(concealed: true) ?? "Hidden") == "Hidden" } == true)
         #expect(snapshot.caps?[0].displayRemaining(concealed: true) == "Hidden")
         #expect(snapshot.guidance?.categories[0].displaySpent(concealed: true) == "Hidden")
-        #expect(snapshot.expiry?[0].headline(today: "2030-05-10") == "471 days")
+        #expect(snapshot.guidance?.categories[0].displaySpent(concealed: false) == "$60.00 spent")
+        #expect(snapshot.expiry?[0].headline(today: today, calendar: utc) == "471 days")
     }
     @Test func oldSnapshotsWithoutRewardSectionsStillDecode() throws {
         let snapshot = try WidgetSnapshot.decode(Data(#"{"version":1,"fetchedAt":"2030-01-03T12:00:00.000Z","balances":[]}"#.utf8))

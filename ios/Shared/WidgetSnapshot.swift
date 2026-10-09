@@ -79,9 +79,9 @@ func displayDecimal(_ text: String, unit: String) -> String {
     }
     return (negative ? "-" : "") + grouped + (fraction.isEmpty ? "" : "." + fraction) + " " + unit
 }
-private func shortDate(_ text: String) -> String {
+private func shortDate(_ text: String, year: Bool = false) -> String {
     guard let date = parseSourceDate(text) else { return text }
-    var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+    var style = year ? Date.FormatStyle.dateTime.month(.abbreviated).day().year() : Date.FormatStyle.dateTime.month(.abbreviated).day()
     if text.count == 10 { style.timeZone = TimeZone(secondsFromGMT: 0)! }
     return date.formatted(style)
 }
@@ -118,20 +118,23 @@ struct WidgetExpiry: Codable, Identifiable, Equatable {
               (status == .scheduled) == (expiresOn != nil),
               expiresOn == nil || (expiresOn!.count == 10 && parseSourceDate(expiresOn!) != nil) else { throw SnapshotError.invalid }
     }
-    func days(from today: String) -> Int? {
-        guard let expiresOn, let end = parseSourceDate(expiresOn), let start = parseSourceDate(today) else { return nil }
-        return Int((end.timeIntervalSince(start) / 86_400).rounded())
+    /** Whole calendar days from the device's local today to the stated date. */
+    func days(from today: Date, calendar: Calendar = .current) -> Int? {
+        guard let expiresOn else { return nil }
+        let parts = expiresOn.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3, let end = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return nil }
+        return calendar.dateComponents([.day], from: calendar.startOfDay(for: today), to: end).day
     }
-    func headline(today: String) -> String {
+    func headline(today: Date, calendar: Calendar = .current) -> String {
         switch status {
-        case .scheduled: return days(from: today).map { String(localized: "\($0) days") } ?? shortDate(expiresOn!)
+        case .scheduled: return days(from: today, calendar: calendar).map { String(localized: "\($0) days") } ?? shortDate(expiresOn!)
         case .none: return String(localized: "No scheduled expiry")
         case .unknown: return String(localized: "Unknown")
         }
     }
     var detail: String {
         switch status {
-        case .scheduled: return String(localized: "Expires \(shortDate(expiresOn!))") + (verified ? "" : String(localized: " · public policy"))
+        case .scheduled: return String(localized: "Expires \(shortDate(expiresOn!, year: true))") + (verified ? "" : String(localized: " · public policy"))
         case .none: return verified ? String(localized: "Verified for this account") : String(localized: "Public policy, unverified")
         case .unknown: return reason
         }
@@ -169,7 +172,7 @@ struct WidgetGuidance: Codable, Equatable {
         let cards: [Card]
         var pickedCard: Card? { cards.first { $0.id == pick } }
         var unknownCount: Int { cards.filter { $0.status != .rate }.count }
-        func displaySpent(concealed: Bool) -> String { concealed ? String(localized: "Hidden") : displayDecimal(spent, unit: "USD") }
+        func displaySpent(concealed: Bool) -> String { concealed ? String(localized: "Hidden") : String(localized: "\(displayDecimal(spent, unit: "USD")) spent") }
     }
     struct Card: Codable, Identifiable, Equatable {
         enum Status: String, Codable { case rate, unknown, conflict }
