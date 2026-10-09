@@ -383,7 +383,8 @@ deploys target his Cloudflare account.
 - `/widgets` and `/api/widget-devices` require Cloudflare Access. Mutations also
   require exact same-origin requests. The Access assertion header is checked
   for presence as defense in depth, not represented as local JWT verification.
-- Only `/api/device/*` may bypass browser Access. It has an explicit allowlist:
+- Only `/api/device/*` and the finance host routes (below) may bypass browser
+  Access. The device API has an explicit allowlist:
   GET session, GET snapshot and DELETE session. A native device generates a
   random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
   reaches the approval page. No Life Data, operator or browser credential goes
