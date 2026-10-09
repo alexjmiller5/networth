@@ -1,7 +1,7 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { readRewardValues, type RewardValue } from '$lib/server/rewards';
 
-// Owner-entered dollars per native unit. Networth's own store; never a provider fact or Life Data.
+// Owner-entered dollars per native unit. Networth's own store; never a provider fact or Soma.
 const headers = { 'cache-control': 'private, no-store' };
 const failure = (status: number, error: string) => json({ error }, { status, headers });
 const unavailable = () => failure(503, 'Program values are unavailable. Try again later.');

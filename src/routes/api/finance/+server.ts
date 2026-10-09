@@ -1,7 +1,7 @@
-// The one data door: pull the finance tables from the life-data hub with a
+// The one data door: pull the finance tables from the soma hub with a
 // read-only token and hand the browser the assembled estate. Cloudflare
 // Access in front of the site is the auth; the hub token never leaves the
-// Worker. LIFE_HUB_URL is a var (wrangler.jsonc), LIFE_HUB_TOKEN a secret.
+// Worker. SOMA_HUB_URL is a var (wrangler.jsonc), SOMA_HUB_TOKEN a secret.
 import { json, error } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RequestHandler } from '@sveltejs/kit';
@@ -131,11 +131,11 @@ async function pull(
 
 export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], widgetsOnly = false) {
 	const env = { ...privateEnv, ...platform?.env } as {
-		LIFE_HUB_URL?: string;
-		LIFE_HUB_TOKEN?: string;
+		SOMA_HUB_URL?: string;
+		SOMA_HUB_TOKEN?: string;
 	};
-	const hub = env.LIFE_HUB_URL?.replace(/\/$/, '');
-	const token = env.LIFE_HUB_TOKEN;
+	const hub = env.SOMA_HUB_URL?.replace(/\/$/, '');
+	const token = env.SOMA_HUB_TOKEN;
 	if (!hub || !token) throw error(503, 'Finance data is not configured yet.');
 
 	try {

@@ -2,17 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { GET } from './+server';
 import type { Estate } from '$lib/finance/assemble';
 
-const environment = { LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'test-read-token' };
+const environment = { SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'test-read-token' };
 const event = (fetch: typeof globalThis.fetch, env = environment) =>
 	({ fetch, platform: { env } }) as unknown as Parameters<typeof GET>[0];
 
 describe('finance endpoint', () => {
 	it('requires the configured hub and token before making requests', async () => {
 		const fetch = vi.fn();
-		await expect(GET(event(fetch, { ...environment, LIFE_HUB_TOKEN: '' }))).rejects.toMatchObject({
+		await expect(GET(event(fetch, { ...environment, SOMA_HUB_TOKEN: '' }))).rejects.toMatchObject({
 			status: 503
 		});
-		await expect(GET(event(fetch, { ...environment, LIFE_HUB_URL: '' }))).rejects.toMatchObject({
+		await expect(GET(event(fetch, { ...environment, SOMA_HUB_URL: '' }))).rejects.toMatchObject({
 			status: 503
 		});
 		expect(fetch).not.toHaveBeenCalled();
@@ -30,7 +30,7 @@ describe('finance endpoint', () => {
 		);
 		await expect(GET(event(fetch))).rejects.toMatchObject({ status: 502 });
 		for (const [url, init] of fetch.mock.calls as unknown as [string, RequestInit][]) {
-			expect(url).toBe(`${environment.LIFE_HUB_URL}/v1/rows/pull`);
+			expect(url).toBe(`${environment.SOMA_HUB_URL}/v1/rows/pull`);
 			expect(init.redirect).toBe('manual');
 		}
 	});
@@ -47,7 +47,7 @@ describe('finance endpoint', () => {
 		const fetch = vi.fn(async () => new Response(JSON.stringify({ rows: [] })));
 		const response = await GET(event(fetch));
 		expect(response.headers.get('cache-control')).toBe('private, no-store');
-		expect(await response.text()).not.toContain(environment.LIFE_HUB_TOKEN);
+		expect(await response.text()).not.toContain(environment.SOMA_HUB_TOKEN);
 	});
 });
 

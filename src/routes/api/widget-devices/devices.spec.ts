@@ -196,7 +196,7 @@ it('adds reward views from the dedicated reader without exposing evidence', asyn
 	const request = event('GET', undefined, { token, path: 'snapshot' });
 	Object.assign(request, { fetch: hub });
 	request.platform = {
-		env: { ...platform.env, LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'synthetic' }
+		env: { ...platform.env, SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'synthetic' }
 	} as unknown as App.Platform;
 	const body = (await (await deviceGET(request)).json()) as Record<string, unknown>;
 	expect(body.rewards).toMatchObject([{ id: 'c', amount: '7', captured: true, usd: null }]);

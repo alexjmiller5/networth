@@ -6,9 +6,9 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `LIFE_HUB_URL` is
+- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` is
   server configuration;
-  `LIFE_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
+  `SOMA_HUB_TOKEN` is a dedicated `tables:read` secret. Neither provider
   evidence nor credentials belong in browser output, fixtures, or git.
   The hub is another Worker, so `global_fetch_strictly_public` must stay
   enabled for the public URL read path. Local runtime tests cannot prove
@@ -78,9 +78,9 @@ protects the site and every API route.
   usage; expiry needs stated deadlines or activity dates. Terms and valuations come
   only from published `reward_terms` / `redemption_valuations`; unknown stays an
   explicit diagnostic, never zero. Owner dollars-per-unit values live in
-  `MARKERS_DB.reward_values` (`/api/reward-values`), never Life Data or git; legacy
+  `MARKERS_DB.reward_values` (`/api/reward-values`), never Soma or git; legacy
   snapshots remain explicitly untyped. See `docs/rewards.md`.
-- Noncash refundable assets (Life Data `assets` + `asset_events`, such as a
+- Noncash refundable assets (Soma `assets` + `asset_events`, such as a
   security deposit) are owned principal that counts in net worth but is not
   spendable. `refundable-principal.ts` validates their complete dated events
   against disjoint owned allocations (a linked share, or an unsplit raw row) and
@@ -102,7 +102,7 @@ protects the site and every API route.
   selected dates. Default to 90D only when no valid preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
   and Screentime. Do not write filters into the URL or restore them from it.
-- Use the life-data catalog for category names, kinds, and icons. Do not
+- Use the soma catalog for category names, kinds, and icons. Do not
   encode the owner's taxonomy or transaction data in this repository.
 - Unit tests live beside the code. Endpoint tests cover credential isolation
   and malformed upstream data; financial tests cover shares, refunds, and
@@ -406,7 +406,7 @@ deploys target his Cloudflare account.
   Access. The device API has an explicit allowlist:
   GET session, GET snapshot and DELETE session. A native device generates a
   random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
-  reaches the approval page. No Life Data, operator or browser credential goes
+  reaches the approval page. No Soma, operator or browser credential goes
   to native consumers. Public callers cannot stage or approve enrollment.
 - Pending enrollment expires in ten minutes. Exact retries preserve expiry;
   conflicting identity and revoked fingerprints cannot be reactivated. The

@@ -9,11 +9,11 @@ import { GET as financeGET } from '../finance/+server';
 export const GET: RequestHandler = async (event) => {
 	const { platform, fetch } = event;
 	const env = { ...privateEnv, ...platform?.env } as {
-		LIFE_HUB_URL?: string;
-		LIFE_HUB_TOKEN?: string;
+		SOMA_HUB_URL?: string;
+		SOMA_HUB_TOKEN?: string;
 	};
-	const hub = env.LIFE_HUB_URL?.replace(/\/$/, ''),
-		token = env.LIFE_HUB_TOKEN;
+	const hub = env.SOMA_HUB_URL?.replace(/\/$/, ''),
+		token = env.SOMA_HUB_TOKEN;
 	if (!hub || !token) throw error(503, 'Rewards are not configured yet.');
 	const headers = { 'cache-control': 'private, no-store' };
 	const today = new Date().toISOString().slice(0, 10);

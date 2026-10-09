@@ -72,23 +72,23 @@ def deployment_account() -> str:
 
 def mint_hub_token() -> str:
     """Use the caller's configured life CLI/admin access, never another app's token."""
-    def life_json(*args):
-        result = subprocess.run(["life", "token", *args], capture_output=True, text=True)
+    def soma_json(*args):
+        result = subprocess.run(["soma", "token", *args], capture_output=True, text=True)
         if result.returncode:
-            raise RuntimeError("life token command failed; check the configured hub and admin access")
+            raise RuntimeError("soma token command failed; check the configured hub and admin access")
         return json.loads(result.stdout)
 
-    if any(t["name"] == NAME and not t.get("revoked_at") for t in life_json("list")):
+    if any(t["name"] == NAME and not t.get("revoked_at") for t in soma_json("list")):
         raise RuntimeError("A networth hub token already exists. Restore its stored value before provisioning again.")
-    result = life_json("create", NAME, "--scopes", "tables:read")
+    result = soma_json("create", NAME, "--scopes", "tables:read")
     if result.get("scopes") != "tables:read" or not result.get("token"):
         raise RuntimeError("Hub did not return a read-only token")
     log("Scoped read-only hub token minted")
     return result["token"]
 
 
-FIELDS.append("LIFE_HUB_TOKEN")
-MINTERS = {"api-token": mint_deploy_token, "account-id": deployment_account, "LIFE_HUB_TOKEN": mint_hub_token}
+FIELDS.append("SOMA_HUB_TOKEN")
+MINTERS = {"api-token": mint_deploy_token, "account-id": deployment_account, "SOMA_HUB_TOKEN": mint_hub_token}
 
 
 def main() -> None:

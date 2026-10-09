@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { GET } from './+server';
 import type { Investments } from '$lib/finance/investments';
-const environment = { LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'synthetic-token' };
+const environment = { SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'synthetic-token' };
 const event = (fetch: typeof globalThis.fetch, env = environment) =>
 	({
 		fetch,
@@ -83,7 +83,7 @@ it.each([
 });
 it('does not fall back to operator auth when the consumer credential is absent', async () => {
 	const fetch = vi.fn<typeof globalThis.fetch>();
-	await expect(GET(event(fetch, { ...environment, LIFE_HUB_TOKEN: '' }))).rejects.toMatchObject({
+	await expect(GET(event(fetch, { ...environment, SOMA_HUB_TOKEN: '' }))).rejects.toMatchObject({
 		status: 503
 	});
 	expect(fetch).not.toHaveBeenCalled();

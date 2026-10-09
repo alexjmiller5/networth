@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { Benefits } from '$lib/finance/benefits';
 import { GET } from './+server';
-const environment = { LIFE_HUB_URL: 'https://hub.example', LIFE_HUB_TOKEN: 'synthetic-token' };
+const environment = { SOMA_HUB_URL: 'https://hub.example', SOMA_HUB_TOKEN: 'synthetic-token' };
 const event = (fetch: typeof globalThis.fetch, env = environment) =>
 	({ fetch, platform: { env } }) as unknown as Parameters<typeof GET>[0];
 const plan = {
@@ -137,7 +137,7 @@ it.each([
 });
 it('does not fetch when the installed service credential is missing', async () => {
 	const fetch = vi.fn<typeof globalThis.fetch>();
-	await expect(GET(event(fetch, { ...environment, LIFE_HUB_TOKEN: '' }))).rejects.toMatchObject({
+	await expect(GET(event(fetch, { ...environment, SOMA_HUB_TOKEN: '' }))).rejects.toMatchObject({
 		status: 503
 	});
 	expect(fetch).not.toHaveBeenCalled();
