@@ -139,7 +139,7 @@
 			groupBy === 'account' ? data.valuations?.find((x) => x.account_id === key) : undefined;
 		if (!v || viewState.dateEnd < v.start || viewState.dateEnd > v.end) return undefined;
 		const i = Math.round((Date.parse(viewState.dateEnd) - Date.parse(v.start)) / 86_400_000);
-		return v.values[i] === null ? undefined : (v.priceDates[i] ?? viewState.dateEnd);
+		return v.values[i] === null ? undefined : (v.priceDates[i] ?? undefined);
 	}
 	const groupBy = $derived(controls.groupBy);
 	const groupKeys = (list: Account[]) =>
@@ -760,7 +760,10 @@
 						{:else if depositAsOf(row.key) !== undefined}Not spendable{depositAsOf(row.key)
 								? ` · as of ${depositAsOf(row.key)}`
 								: ''}
-						{:else if row.value === null}{coverage ? coverageText(coverage).label : 'Not verified'}
+						{:else if row.value === null}{coverage
+								? coverageText(coverage).label
+								: 'Not verified'}{#if coverage?.status === 'investment-unvalued' && coverage.reasons.length}
+								· {coverageText(coverage).details}{/if}
 						{:else if pricedAsOf(row.key)}Market value as of {pricedAsOf(row.key)}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
