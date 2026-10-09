@@ -25,8 +25,8 @@
 	import IconFilter from '@tabler/icons-svelte/icons/filter';
 	import IconChevronDown from '@tabler/icons-svelte/icons/chevron-down';
 	import IconArrowsDownUp from '@tabler/icons-svelte/icons/arrows-down-up';
-	import arrowsDownUpSvg from '@tabler/icons/icons/outline/arrows-down-up.svg?raw';
-	import giftSvg from '@tabler/icons/icons/outline/gift.svg?raw';
+	import arrowsDownUpSvg from '@tabler/icons/outline/arrows-down-up.svg?raw';
+	import giftSvg from '@tabler/icons/outline/gift.svg?raw';
 	import IconSum from '@tabler/icons-svelte/icons/sum';
 	import IconRefresh from '@tabler/icons-svelte/icons/refresh';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
