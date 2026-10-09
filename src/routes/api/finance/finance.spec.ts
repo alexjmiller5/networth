@@ -265,3 +265,51 @@ it('loads a large complete table without forcing serial small-page round trips',
 	expect(data.txns).toHaveLength(1001);
 	expect(requests.filter((table) => table === 'txns_bank')).toHaveLength(1);
 });
+
+it('reads asset evidence as a filtered provenance slice and never returns evidence keys', async () => {
+	const bodies: Record<string, unknown>[] = [];
+	const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+		const body = JSON.parse(String(init?.body));
+		bodies.push(body);
+		const rows: Record<string, unknown[]> = {
+			accounts: [account('account-1')],
+			txns_bank: [transaction('leg', -25)],
+			assets: [{ id: 'asset-1', kind: 'security_deposit', name: 'Deposit', currency: 'USD' }],
+			asset_events: [
+				{
+					id: 'e1',
+					asset_id: 'asset-1',
+					kind: 'fund',
+					date: '2026-01-05',
+					amount: 2500,
+					source: 'bank',
+					source_id: 'leg',
+					share_id: null
+				}
+			],
+			provenance: [{ to_ref: 'e1', from_kind: 'takeout', from_ref: 'raw/secret-evidence-key' }]
+		};
+		return Response.json({ rows: rows[body.table] ?? [] });
+	});
+	const response = await GET(event(fetch));
+	const text = await response.text();
+	expect(text).not.toContain('secret-evidence-key');
+	const estate = JSON.parse(text) as Estate;
+	expect(estate.assets.map((a) => a.id)).toEqual(['asset-1']);
+	expect(estate.txns.filter((t) => t.account_id === 'asset-1').map((t) => t.amount)).toEqual([25]);
+	expect(bodies.find((b) => b.table === 'provenance')?.where).toEqual({
+		to_kind: 'asset_events',
+		rel: 'evidence_of'
+	});
+	const widgets: string[] = [];
+	await GET(
+		event(
+			vi.fn(async (_url: unknown, init?: RequestInit) => {
+				widgets.push(JSON.parse(String(init?.body)).table);
+				return Response.json({ rows: [] });
+			})
+		),
+		true
+	);
+	expect(widgets.sort()).toEqual(['accounts', 'scrape_runs']);
+});

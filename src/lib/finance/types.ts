@@ -7,7 +7,9 @@ export type AccountType =
 	| 'ira'
 	| '401k'
 	| 'cash'
-	| 'stored_value';
+	| 'stored_value'
+	/** A noncash refundable asset (Life Data `assets.kind`), never a bank account. */
+	| 'security_deposit';
 
 export interface Account {
 	id: string;
@@ -53,6 +55,8 @@ export interface TxnShare {
 	amount: number; // signed like the parent, never larger
 	category: string;
 	categoryKind?: CategoryKind;
+	/** Signed principal of this share linked to a noncash asset; flows leave it out. */
+	principal?: number;
 }
 
 export interface Txn {
@@ -76,6 +80,8 @@ export interface Txn {
 	shares?: TxnShare[];
 	/** A share with no bank row behind it (a friend paid): spending only, no account, no balance. */
 	standalone?: boolean;
+	/** Signed principal of an unsplit row linked to a noncash asset; flows leave it out. */
+	principal?: number;
 }
 
 export interface PointsBalance {
@@ -85,5 +91,5 @@ export interface PointsBalance {
 	scrapedAt: string;
 }
 
-export type AssetClass = 'cash' | 'investments';
+export type AssetClass = 'cash' | 'investments' | 'deposits';
 export type GroupBy = 'account' | 'bank' | 'type' | 'asset' | 'category';

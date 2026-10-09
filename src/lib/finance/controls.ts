@@ -17,11 +17,12 @@ import {
 export const STORAGE_KEY = 'networth-ui';
 export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
+export const ASSET_CLASSES: AssetClass[] = ['cash', 'investments', 'deposits'];
 export interface Controls {
 	hideAmounts: boolean;
 	presentation: 'chart' | 'overview';
 	accountStatuses: ('open' | 'closed')[];
-	assetClasses: AssetClass[];
+	assetClassFilter: AssetClass[];
 	balanceSources: ('accounts' | 'rewards')[];
 	measure: 'balances' | 'activity';
 	activePreset: PresetLabel | '';
@@ -92,9 +93,15 @@ export function readControls(
 	const accountStatuses = strings(saved.accountStatuses).filter(
 		(s): s is 'open' | 'closed' => s === 'open' || s === 'closed'
 	);
-	const assetClasses = strings(saved.assetClasses).filter(
-		(s): s is AssetClass => s === 'cash' || s === 'investments'
-	);
+	const classes = (v: unknown) =>
+		strings(v).filter((s): s is AssetClass => ASSET_CLASSES.includes(s as AssetClass));
+	// Older saves predate Deposits: their full selection meant every class.
+	const legacy = classes(saved.assetClasses);
+	const assetClassFilter = classes(saved.assetClassFilter).length
+		? classes(saved.assetClassFilter)
+		: legacy.length && !(legacy.includes('cash') && legacy.includes('investments'))
+			? legacy
+			: ASSET_CLASSES;
 	const balanceSources = strings(saved.balanceSources).filter(
 		(s): s is 'accounts' | 'rewards' => s === 'accounts' || s === 'rewards'
 	);
@@ -111,7 +118,7 @@ export function readControls(
 			: saved.includeClosed === false
 				? ['open']
 				: ['open', 'closed'],
-		assetClasses: assetClasses.length ? assetClasses : ['cash', 'investments'],
+		assetClassFilter,
 		balanceSources: balanceSources.length ? balanceSources : ['accounts', 'rewards'],
 		measure:
 			groupBy === 'category'
@@ -171,14 +178,14 @@ export function buildView(
 	accounts = accounts.filter(
 		(a) =>
 			state.accountStatuses.includes(a.closed ? 'closed' : 'open') &&
-			state.assetClasses.includes(assetClass(a)) &&
+			state.assetClassFilter.includes(assetClass(a)) &&
 			state.balanceSources.includes(a.type === 'stored_value' ? 'rewards' : 'accounts')
 	);
 	const ids = new Set(accounts.map((a) => a.id));
 	txns = txns.filter((t) =>
 		t.standalone
 			? state.accountStatuses.includes('open') &&
-				state.assetClasses.includes('cash') &&
+				state.assetClassFilter.includes('cash') &&
 				state.balanceSources.includes('accounts')
 			: ids.has(t.account_id ?? '')
 	);
@@ -193,11 +200,14 @@ export function buildView(
 		const account = accountOf.get(t.account_id ?? '');
 		return account ? accountGroup(account, groupBy) : undefined;
 	};
+	// Deposits are evidenced principal, not reconciled ledgers, so they have no coverage row.
 	const verified = coverage
-		? accounts.filter((a) =>
-				coverage.some(
-					(c) => c.account_id === a.id && c.status === 'verified' && c.basis === 'money'
-				)
+		? accounts.filter(
+				(a) =>
+					assetClass(a) === 'deposits' ||
+					coverage.some(
+						(c) => c.account_id === a.id && c.status === 'verified' && c.basis === 'money'
+					)
 			)
 		: accounts;
 	let base;

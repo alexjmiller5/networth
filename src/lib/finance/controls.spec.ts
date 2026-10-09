@@ -106,17 +106,17 @@ it('separates internal transfers from activity while showing allocation changes 
 		const activity = state({ measure: 'activity', groupBy });
 		expect(buildView(rows, registry, categories, activity).total).toBe(5);
 		for (const assetClasses of [['cash'], ['investments'], ['cash', 'investments']] as const) {
-			const s = { ...activity, assetClasses: [...assetClasses] };
+			const s = { ...activity, assetClassFilter: [...assetClasses] };
 			expect(buildView(rows, registry, categories, s).total).toBe(
 				assetClasses.some((c) => c === 'cash') ? 5 : 0
 			);
 		}
 	}
-	expect(buildView(rows, registry, categories, { ...balances, assetClasses: ['cash'] }).total).toBe(
-		65
-	);
 	expect(
-		buildView(rows, registry, categories, { ...balances, assetClasses: ['investments'] }).total
+		buildView(rows, registry, categories, { ...balances, assetClassFilter: ['cash'] }).total
+	).toBe(65);
+	expect(
+		buildView(rows, registry, categories, { ...balances, assetClassFilter: ['investments'] }).total
 	).toBe(40);
 	expect(buildView(rows, registry, categories, balances).total).toBe(105);
 	const missing = [
@@ -132,8 +132,13 @@ it('separates internal transfers from activity while showing allocation changes 
 		}
 	];
 	expect(
-		buildView(rows, registry, categories, { ...balances, assetClasses: ['investments'] }, missing)
-			.summary
+		buildView(
+			rows,
+			registry,
+			categories,
+			{ ...balances, assetClassFilter: ['investments'] },
+			missing
+		).summary
 	).toEqual([{ key: 'investments', value: null }]);
 });
 
@@ -141,8 +146,12 @@ it('persists asset filters and restores the previous balance or activity interpr
 	expect(restore().measure).toBe('balances');
 	expect(state({ flows: ['spending'] }).measure).toBe('activity');
 	expect(state({ groupBy: 'category' }).measure).toBe('activity');
-	expect(state({ assetClasses: [] }).assetClasses).toEqual(['cash', 'investments']);
-	const s = state({ measure: 'activity', assetClasses: ['investments'], groupBy: 'asset' });
+	expect(state({ assetClassFilter: [] }).assetClassFilter).toEqual([
+		'cash',
+		'investments',
+		'deposits'
+	]);
+	const s = state({ measure: 'activity', assetClassFilter: ['investments'], groupBy: 'asset' });
 	let saved = '';
 	writeControls(
 		{
@@ -181,6 +190,76 @@ it('filters bank ledgers separately from stored value, and preserves the selecti
 		);
 		expect(restore(saved).balanceSources).toEqual([...balanceSources]);
 	}
+});
+
+it('shows refundable deposits as their own asset class, outside activity and coverage', () => {
+	const registry = [
+		accounts[0],
+		{ id: 'dep', name: 'Deposit', bank: 'Deposit', type: 'security_deposit' as const }
+	];
+	const rows = [
+		{ account_id: 'account-1', date: min, amount: 100 },
+		{ account_id: 'account-1', date: '2026-02-01', amount: -60, category: 'Category 1' },
+		{ account_id: 'dep', date: '2026-02-01', amount: 60, internal: true },
+		{ account_id: 'dep', date: '2026-03-01', amount: -60, internal: true },
+		{ account_id: 'account-1', date: '2026-03-01', amount: 60, category: 'Category 1' }
+	];
+	const coverage = [
+		{
+			account_id: 'account-1',
+			status: 'verified' as const,
+			basis: 'money' as const,
+			asOf: `${max}T00:00:00.000Z`,
+			firstTransaction: min,
+			lastTransaction: '2026-03-01',
+			transactionCount: 3,
+			reasons: []
+		}
+	];
+	const at = (dateEnd: string, extra = {}) =>
+		buildView(
+			rows,
+			registry,
+			categories,
+			state({
+				presentation: 'overview',
+				groupBy: 'asset',
+				activePreset: '',
+				dateStart: min,
+				dateEnd,
+				...extra
+			}),
+			coverage
+		);
+	expect(at('2026-02-15').summary).toEqual([
+		{ key: 'cash', value: 40 },
+		{ key: 'deposits', value: 60 }
+	]);
+	expect(at('2026-02-15').total).toBe(100);
+	expect(at(max).summary).toEqual([
+		{ key: 'cash', value: 100 },
+		{ key: 'deposits', value: 0 }
+	]);
+	const cashOnly = at('2026-02-15', { assetClassFilter: ['cash', 'investments'] });
+	expect(cashOnly.keys).toEqual(['cash']);
+	expect(cashOnly.total).toBe(40);
+	const activity = at(max, { measure: 'activity', flows: ['spending'] });
+	expect(activity.applicable).toEqual(['cash']);
+	expect(activity.uncategorized).toBe(0);
+});
+
+it('adds Deposits to legacy saves that selected every asset class, keeping narrowed ones', () => {
+	expect(restore('{"assetClasses":["cash","investments"]}').assetClassFilter).toEqual([
+		'cash',
+		'investments',
+		'deposits'
+	]);
+	expect(restore('{"assetClasses":["cash"]}').assetClassFilter).toEqual(['cash']);
+	expect(restore('{}').assetClassFilter).toEqual(['cash', 'investments', 'deposits']);
+	expect(state({ assetClassFilter: ['cash', 'investments'] }).assetClassFilter).toEqual([
+		'cash',
+		'investments'
+	]);
 });
 
 it('shows missing balances as unavailable instead of zero in the overview', () => {

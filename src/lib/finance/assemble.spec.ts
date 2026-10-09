@@ -776,3 +776,162 @@ it('does not verify a closed zero when quantity evidence lacks an instrument ide
 	];
 	expect(assemble(t).coverage[0].currentBalance).toBeUndefined();
 });
+
+describe('noncash refundable assets', () => {
+	const share = (
+		id: string,
+		source_id: string,
+		amount: number,
+		category: string,
+		date: string
+	) => ({
+		id,
+		source: 'bofa',
+		source_id,
+		amount,
+		category,
+		date,
+		deleted_at: null
+	});
+	const event = (
+		id: string,
+		kind: string,
+		date: string,
+		amount: number,
+		link: { source_id?: string; share_id?: string } = {}
+	) => ({
+		id,
+		asset_id: 'asset-1',
+		kind,
+		date,
+		amount,
+		source: link.source_id ? 'bofa' : null,
+		source_id: link.source_id ?? null,
+		share_id: link.share_id ?? null,
+		deleted_at: null
+	});
+	const evidence = (to_ref: string) => ({
+		to_ref,
+		from_kind: 'takeout',
+		from_ref: `raw/${to_ref}`,
+		deleted_at: null
+	});
+	const base: EstateTables = {
+		...structuredClone(tables),
+		categories: [
+			...structuredClone(tables.categories),
+			{ id: 'housing', name: 'Housing', kind: 'spending', icon: 'tabler:home', sort: 8 },
+			{ id: 'sales', name: 'Sales', kind: 'income', icon: 'tabler:tag', sort: 9 }
+		],
+		shares: [
+			share('fund-rent', 'f1', -200, 'Rent', '2026-03-01'),
+			share('fund-dep', 'f1', -100, 'Housing', '2026-03-01'),
+			share('back-dep', 'r1', 157, 'Housing', '2026-04-01'),
+			share('back-sale', 'r1', 10, 'Sales', '2026-04-01')
+		],
+		overlay: [{ source: 'bofa', source_id: 'f2', category: 'Housing', internal: 0, excluded: 0 }],
+		txns: {
+			bofa: [
+				{ id: 'f1', account_id: 'chk', date: '2026-03-01', amount: -300, deleted_at: null },
+				{ id: 'f2', account_id: 'chk', date: '2026-03-02', amount: -50, deleted_at: null },
+				{ id: 'r1', account_id: 'chk', date: '2026-04-01', amount: 170, deleted_at: null }
+			]
+		},
+		assets: [
+			{
+				id: 'asset-1',
+				kind: 'security_deposit',
+				name: 'Deposit',
+				currency: 'USD',
+				deleted_at: null
+			},
+			{
+				id: 'gone',
+				kind: 'security_deposit',
+				name: 'Old',
+				currency: 'USD',
+				deleted_at: '2026-01-01'
+			}
+		],
+		asset_events: [
+			event('e1', 'fund', '2026-03-01', 10000, { source_id: 'f1', share_id: 'fund-dep' }),
+			event('e2', 'fund', '2026-03-02', 5000, { source_id: 'f2' }),
+			event('e3', 'refund', '2026-04-01', 15000, { source_id: 'r1', share_id: 'back-dep' }),
+			{ ...event('e4', 'fund', '2026-03-05', 999), deleted_at: '2026-03-06' }
+		],
+		asset_evidence: ['e1', 'e2', 'e3'].map(evidence)
+	};
+	const e = assemble(base);
+	const flows = (mode: 'spending' | 'income') =>
+		flowSeries(e.txns, '2026-03-01', '2026-04-01', 'month', (t) => t.category, mode).series;
+
+	it('returns each live asset as a balance-only Deposits series, closed once fully returned', () => {
+		expect(e.assets).toEqual([
+			{
+				id: 'asset-1',
+				bank: 'Deposit',
+				name: 'Deposit',
+				type: 'security_deposit',
+				currency: 'USD',
+				closed: true
+			}
+		]);
+		expect(e.accounts.map((a) => a.id)).not.toContain('asset-1');
+		expect(e.coverage.map((c) => c.account_id)).not.toContain('asset-1');
+		const ledger = e.txns.filter((t) => t.account_id === 'asset-1');
+		expect(ledger.map((t) => [t.date, t.amount, t.balanceAmount, t.internal])).toEqual([
+			['2026-03-01', 100, 100, true],
+			['2026-03-02', 50, 50, true],
+			['2026-04-01', -150, -150, true]
+		]);
+		const [series] = deriveBalances(e.txns, e.assets, '2026-02-28', '2026-04-02').series;
+		expect(series.data.slice(0, 3)).toEqual([0, 100, 150]);
+		expect(series.data.slice(-3)).toEqual([150, 0, 0]);
+	});
+
+	it('removes only linked principal from flows and leaves raw balances untouched', () => {
+		expect(flows('spending')).toEqual([
+			{ key: 'Rent', data: [200, 0] },
+			{ key: 'Housing', data: [0, -7] }
+		]);
+		expect(flows('income')).toEqual([{ key: 'Sales', data: [0, 10] }]);
+		const [chk] = deriveBalances(e.txns, e.accounts, '2026-04-01', '2026-04-01').series;
+		expect(chk.data).toEqual([-180]);
+		expect(e.txns.find((t) => t.source_id === 'f1')?.amount).toBe(-300);
+	});
+
+	it('keeps an evidenced forfeit as a balance change with no cash leg', () => {
+		const t = structuredClone(base);
+		t.asset_events = [
+			event('e1', 'fund', '2026-03-01', 10000, { source_id: 'f1', share_id: 'fund-dep' }),
+			event('lost', 'forfeit', '2026-03-09', 4000)
+		];
+		t.asset_evidence = ['e1', 'lost'].map(evidence);
+		const out = assemble(t);
+		expect(out.assets[0].closed).toBe(false);
+		const ledger = out.txns.filter((r) => r.account_id === 'asset-1');
+		expect(ledger.map((r) => [r.date, r.amount])).toEqual([
+			['2026-03-01', 100],
+			['2026-03-09', -40]
+		]);
+	});
+
+	it.each([
+		['missing evidence', (t: EstateTables) => (t.asset_evidence = [])],
+		['refund beyond funding', (t: EstateTables) => (t.asset_events![2].amount = 15001)],
+		['unknown share', (t: EstateTables) => (t.asset_events![0].share_id = 'nope')],
+		['share of another row', (t: EstateTables) => (t.asset_events![0].source_id = 'r1')],
+		['principal beyond its share', (t: EstateTables) => (t.asset_events![0].amount = 10001)],
+		['raw link on a split row', (t: EstateTables) => (t.asset_events![0].share_id = null)],
+		['missing raw row', (t: EstateTables) => (t.asset_events![1].source_id = 'nope')],
+		['forfeit with a cash leg', (t: EstateTables) => (t.asset_events![1].kind = 'forfeit')],
+		['unknown event kind', (t: EstateTables) => (t.asset_events![1].kind = 'interest')],
+		['unknown asset kind', (t: EstateTables) => (t.assets![0].kind = 'loan')],
+		['currency mismatch', (t: EstateTables) => (t.assets![0].currency = 'EUR')],
+		['fractional minor units', (t: EstateTables) => (t.asset_events![1].amount = 50.5)]
+	])('rejects %s', (_name, mutate) => {
+		const t = structuredClone(base);
+		mutate(t);
+		expect(() => assemble(t)).toThrow();
+	});
+});

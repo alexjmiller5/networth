@@ -5,7 +5,7 @@
 import { json, error } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { RequestHandler } from '@sveltejs/kit';
-import { assemble, type HubRow } from '$lib/finance/assemble';
+import { assemble, type EstateTables, type HubRow } from '$lib/finance/assemble';
 import { categoryIconUrl } from '$lib/server/categoryIcons';
 
 const TXN_COLUMNS = [
@@ -56,7 +56,25 @@ const TABLES: Record<string, string[]> = {
 		'funding_source',
 		'destination',
 		'deleted_at'
-	]
+	],
+	assets: ['id', 'kind', 'name', 'currency', 'deleted_at'],
+	asset_events: [
+		'id',
+		'asset_id',
+		'kind',
+		'date',
+		'amount',
+		'source',
+		'source_id',
+		'share_id',
+		'deleted_at'
+	],
+	asset_evidence: ['to_ref', 'from_kind', 'from_ref', 'deleted_at']
+};
+// Tables read under another hub name, optionally as an indexed equality slice.
+const HUB_TABLE: Record<string, { table: string; where?: Record<string, string> }> = {
+	points: { table: 'points_balances' },
+	asset_evidence: { table: 'provenance', where: { to_kind: 'asset_events', rel: 'evidence_of' } }
 };
 
 async function pull(
@@ -64,7 +82,8 @@ async function pull(
 	token: string,
 	table: string,
 	columns: string[],
-	fetchFn: typeof fetch
+	fetchFn: typeof fetch,
+	where?: Record<string, string>
 ): Promise<HubRow[]> {
 	const rows: HubRow[] = [];
 	let after = '';
@@ -75,7 +94,13 @@ async function pull(
 			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
 			// The hub's supported complete-table read avoids serial round trips on cold loads.
 			// Continue with bounded pages only when the hub actually returns a cursor.
-			body: JSON.stringify({ table, columns, since: '', ...(after ? { after, limit: 200 } : {}) }),
+			body: JSON.stringify({
+				table,
+				columns,
+				since: '',
+				...(where ? { where } : {}),
+				...(after ? { after, limit: 200 } : {})
+			}),
 			signal,
 			// Workers supports manual/follow only. Reject 3xx below, keeping the
 			// credential on this exact configured destination.
@@ -114,14 +139,17 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 	if (!hub || !token) throw error(503, 'Finance data is not configured yet.');
 
 	try {
-		const [accounts, overlay, shares, points, categories, scrape_runs, venmo_statement_lines] =
+		const pulled: Record<string, HubRow[]> = Object.fromEntries(
 			await Promise.all(
-				Object.entries(TABLES).map(([t, cols]) =>
+				Object.entries(TABLES).map(async ([t, cols]) => [
+					t,
 					widgetsOnly && !['accounts', 'scrape_runs'].includes(t)
-						? Promise.resolve([])
-						: pull(hub, token, t === 'points' ? 'points_balances' : t, cols, fetch)
-				)
-			);
+						? []
+						: await pull(hub, token, HUB_TABLE[t]?.table ?? t, cols, fetch, HUB_TABLE[t]?.where)
+				])
+			)
+		);
+		const { accounts } = pulled;
 		// Reuse registry normalization, including both supported closure fields.
 		const cardIds = widgetsOnly
 			? new Set(
@@ -155,13 +183,8 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 			])
 		);
 		const estate = assemble({
+			...(pulled as Omit<EstateTables, 'accounts' | 'txns'>),
 			accounts: selectedAccounts,
-			overlay,
-			shares,
-			points,
-			categories,
-			scrape_runs,
-			venmo_statement_lines,
 			txns
 		});
 		return json(

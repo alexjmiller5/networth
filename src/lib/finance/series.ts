@@ -72,6 +72,7 @@ export function deriveBalances(
 }
 
 export function assetClass(account: Account): AssetClass {
+	if (account.type === 'security_deposit') return 'deposits';
 	return ['brokerage', 'ira', '401k'].includes(account.type) ? 'investments' : 'cash';
 }
 
@@ -181,19 +182,26 @@ export function netTotals(s: StackedSeries): number[] {
 }
 
 /** Matches the spending view: shares are independent of the parent's flags.
- * Unsplit internal, excluded and synthetic transactions do not contribute. */
+ * Unsplit internal, excluded and synthetic transactions do not contribute.
+ * Principal linked to a noncash asset moves a balance, so only the rest flows. */
 export function flowPieces(txns: Txn[]): Txn[] {
 	const out: Txn[] = [];
+	const rest = (amount: number, principal: number) => Math.round((amount - principal) * 100) / 100;
 	for (const t of txns) {
 		if (t.shares?.length) {
 			for (const s of t.shares) {
-				const piece = { ...t, shares: undefined, ...s, date: s.date ?? t.date };
+				const amount = s.principal ? rest(s.amount, s.principal) : s.amount;
+				if (!amount) continue;
+				const piece = { ...t, shares: undefined, ...s, amount, date: s.date ?? t.date };
 				delete piece.internal;
 				delete piece.excluded;
 				delete piece.synthetic;
 				out.push(piece);
 			}
-		} else if (!t.excluded && !t.internal && !t.synthetic) out.push(t);
+		} else if (!t.excluded && !t.internal && !t.synthetic) {
+			if (!t.principal) out.push(t);
+			else if (rest(t.amount, t.principal)) out.push({ ...t, amount: rest(t.amount, t.principal) });
+		}
 	}
 	return out;
 }
