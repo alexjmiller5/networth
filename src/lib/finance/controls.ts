@@ -307,10 +307,25 @@ export function buildView(
 			(key) => !hidden.includes(key) && (isFlow || (key !== FRIEND_PAID && key !== REWARDS_PAID))
 		)
 		.map((key) => ({ key, value: values.get(key) ?? null }));
+	// A carried plan NAV still counts, but the subtotal is then no longer all verified.
+	const carried = valuations.some((v) => {
+		const account = accountOf.get(v.account_id);
+		const i = Math.round((Date.parse(end) - Date.parse(v.start)) / 86_400_000);
+		return (
+			account &&
+			!hidden.includes(accountGroup(account, groupBy)) &&
+			v.values[i] != null &&
+			v.carried[i]
+		);
+	});
 	const title = !isFlow
 		? cumulative
-			? 'Verified balance subtotal'
-			: 'Verified balance change'
+			? carried
+				? 'Balance subtotal with carried NAV'
+				: 'Verified balance subtotal'
+			: carried
+				? 'Balance change with carried NAV'
+				: 'Verified balance change'
 		: mode === 'spending'
 			? 'Spending'
 			: mode === 'income'

@@ -277,6 +277,48 @@ const categories = [
 	{ id: 'two', name: 'Category 2', kind: 'spending' as const, icon: 'tabler:home', sort: 20 }
 ];
 
+it('never calls a subtotal verified when it includes a carried plan NAV', () => {
+	const plan = { id: 'plan', name: '401(k)', bank: 'Plan', type: '401k' as const };
+	const valuation = (carried: boolean) => ({
+		account_id: 'plan',
+		start: max,
+		end: max,
+		values: [100],
+		priceDates: [max],
+		carried: [carried],
+		gaps: []
+	});
+	const s = state({ measure: 'balances', activePreset: '', dateStart: min, dateEnd: max });
+	const rows = [
+		{ account_id: 'plan', date: max, amount: 100, qty: 1, ticker: 'FUND' },
+		{ account_id: 'account-1', date: max, amount: 5 }
+	];
+	const view = (carried: boolean, hidden: string[] = []) =>
+		buildView(
+			rows,
+			[plan, ...accounts],
+			categories,
+			{ ...s, hidden: { ...s.hidden, account: hidden } },
+			[
+				{
+					account_id: 'account-1',
+					status: 'verified',
+					basis: 'money',
+					asOf: max,
+					firstTransaction: max,
+					lastTransaction: max,
+					transactionCount: 1,
+					reasons: []
+				}
+			],
+			[valuation(carried)]
+		);
+	expect(view(false).title).toBe('Verified balance subtotal');
+	expect(view(true).title).toBe('Balance subtotal with carried NAV');
+	expect(view(true).total).toBe(105);
+	expect(view(true, ['plan']).title).toBe('Verified balance subtotal');
+});
+
 describe('control persistence', () => {
 	it.each(['null', '[]', '{bad', '{"bucket":"bogus","hidden":{"account":4}}'])(
 		'recovers corrupt save %s per field',
