@@ -1,4 +1,5 @@
 import type { AccountCoverage } from './types';
+import { navAge, type AccountValuation } from './valuation';
 
 /** Presentation-only concealment; source values stay on the current device. */
 export function formatMoney(value: number, hideAmounts: boolean): string {
@@ -28,7 +29,8 @@ export function formatCoverage(
 		unverified: 'Unverified',
 		missing: 'Missing transactions',
 		'investment-unvalued': 'Investment value unavailable',
-		'verified-closed-zero': 'Verified current zero'
+		'verified-closed-zero': 'Verified current zero',
+		carried: 'Carried NAV'
 	};
 	if (hideAmounts && coverage.status === 'verified-closed-zero')
 		return {
@@ -36,4 +38,13 @@ export function formatCoverage(
 			details: 'Current balance verified; historical market values remain unavailable'
 		};
 	return { label: labels[coverage.status], details: coverage.reasons.join(' · ') };
+}
+
+/** Overview caption for an investment value on a day: its price date, plus the NAV age when carried. */
+export function valuationLabel(v: AccountValuation, day: string): string | undefined {
+	if (day < v.start || day > v.end) return undefined;
+	const i = Math.round((Date.parse(day) - Date.parse(v.start)) / 86_400_000);
+	const asOf = v.values[i] === null ? null : v.priceDates[i];
+	if (!asOf) return undefined;
+	return v.carried[i] ? `As of ${asOf} · NAV ${navAge(asOf, day)}` : `Market value as of ${asOf}`;
 }

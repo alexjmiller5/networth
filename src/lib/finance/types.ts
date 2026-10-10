@@ -38,10 +38,16 @@ export interface Category {
 
 export interface AccountCoverage {
 	account_id: string;
-	status: 'verified' | 'unverified' | 'missing' | 'investment-unvalued' | 'verified-closed-zero';
+	status:
+		| 'verified'
+		| 'unverified'
+		| 'missing'
+		| 'investment-unvalued'
+		| 'verified-closed-zero'
+		| 'carried';
 	/** Verified current flat investment only; never a historical price series. */
 	currentBalance?: 0;
-	/** Oldest price date behind a verified investment's current market value. */
+	/** Oldest price date behind a verified or carried investment's current market value. */
 	valuedAsOf?: string;
 	basis: 'money' | 'units' | 'none';
 	asOf: string | null;

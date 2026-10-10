@@ -11,12 +11,12 @@ is written back to Soma.
 to one series. Edit them on `/investments` (Price sources); they are never source
 code or Soma rows.
 
-| Provider       | Symbol                                                                            | History                                                                                                                                  |
-| -------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `tiingo`       | Tiingo ticker (stocks, ETFs, mutual funds)                                        | Whole history on first fetch, then a 10-day overlap                                                                                      |
-| `fidelity`     | Fidelity fund number; the payload's trading symbol must equal the ledger security | Last 30 days per run (the public endpoint rejects longer ranges and throttles bursts)                                                    |
-| `alphavantage` | Alpha Vantage symbol                                                              | Last 100 days (free `compact`); needs `ALPHA_VANTAGE_API_KEY`, not provisioned                                                           |
-| `netbenefits`  | none                                                                              | NAV observations from finance runs (`investment_observations`, `price_kind = nav`, source-dated), only for that account's own instrument |
+| Provider       | Symbol                                                                            | History                                                                                                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tiingo`       | Tiingo ticker (stocks, ETFs, mutual funds)                                        | Whole history on first fetch, then a 10-day overlap                                                                                                                                                                                   |
+| `fidelity`     | Fidelity fund number; the payload's trading symbol must equal the ledger security | Last 30 days per run (the public endpoint rejects longer ranges and throttles bursts)                                                                                                                                                 |
+| `alphavantage` | Alpha Vantage symbol                                                              | Last 100 days (free `compact`); needs `ALPHA_VANTAGE_API_KEY`, not provisioned                                                                                                                                                        |
+| `netbenefits`  | none                                                                              | NAV observations from finance runs (`investment_observations`, `price_kind = nav`, source-dated: current NAV, 12 month-end closes, per-transaction unit prices), only for that account's own instrument; carried forward between them |
 
 A held security without a mapping makes its account unavailable with the reason
 "No price source for X". Mapping a shared fund once per account is deliberate:
@@ -48,6 +48,11 @@ through the overlap window. Free-tier Tiingo limits: 50 requests/hour, 1,000/day
 - A price is usable when it is at most 4 calendar days old and no cached daily
   series has a newer market day in between. Weekends and holidays carry the last
   close; a missing trading-day close is a gap, never interpolated.
+- A `netbenefits` plan-fund NAV is the exception: it carries forward until the
+  next recorded NAV, however old, because plan funds have no daily series and a
+  NAV moves little between finance runs. Those days are `carried`: they count in
+  totals, the Overview card reads "As of <NAV date> · NAV N days old", and
+  coverage reads "Carried NAV" (never verified) when the end date is carried.
 - Unavailable days are `null` with a reason, recorded as run-length gaps. The
   chart leaves them empty; groups with an unavailable member are unavailable;
   totals sum only available values, so a gap can lower but never inflate them.
@@ -55,9 +60,10 @@ through the overlap window. Free-tier Tiingo limits: 50 requests/hour, 1,000/day
   ledger units that disagree with observed holdings (same day or the day before a
   capture), or a provider split the ledger books on another day blocks the
   affected days.
-- Coverage turns `verified` only when the end date is priced; `valuedAsOf` is the
-  oldest price date behind that value and the Overview shows it as "Market value
-  as of". Trade execution prices are never used as NAVs.
+- Coverage turns `verified` only when the end date is freshly priced; `valuedAsOf`
+  is the oldest price date behind that value and the Overview shows it as "Market
+  value as of". Brokerage trade execution prices are never used as NAVs; a plan
+  fund's own transaction unit price is its NAV and arrives as a Soma observation.
 
 Dividends accrue between ex-date and pay date as a small dip (cash arrives on the
 pay date); there is no accrual model.

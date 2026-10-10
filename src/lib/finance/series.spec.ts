@@ -313,6 +313,7 @@ describe('valued investment series', () => {
 		end: '2026-01-04',
 		values: [100, null, 120],
 		priceDates: ['2026-01-02', null, '2026-01-04'],
+		carried: [false, false, false],
 		gaps: [{ start: '2026-01-03', end: '2026-01-03', reason: 'stale' }]
 	};
 	const investRows: Txn[] = [

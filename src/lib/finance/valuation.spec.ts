@@ -163,6 +163,52 @@ describe('investment valuation', () => {
 		expect(other.values).toEqual([null]);
 	});
 
+	it('carries a plan-fund NAV past the 4-day rule until the next capture, marked carried', () => {
+		const plan401k = {
+			accounts: [plan],
+			txns: [txn('p', '2026-01-09', 100, 2, 'FUND')],
+			coverage: [cov('p', 'units')],
+			mappings: [
+				{ account_id: 'p', security_id: 'FUND', provider: 'netbenefits' as const, symbol: null }
+			]
+		};
+		// NAV on Friday 01-09, next capture 01-20; no other series, so only age applies.
+		const [v] = run({
+			...plan401k,
+			prices: book({
+				'netbenefits:p:FUND': [
+					['2026-01-09', 50],
+					['2026-01-20', 55]
+				]
+			}),
+			end: '2026-01-20'
+		});
+		expect(v.values).toEqual([...Array(11).fill(100), 110]);
+		expect(v.priceDates.slice(0, 11)).toEqual(Array(11).fill('2026-01-09'));
+		// Tuesday 01-13 is 4 days old (fresh); Wednesday 01-14 is the first carried day.
+		expect(v.carried).toEqual([...Array(5).fill(false), ...Array(6).fill(true), false]);
+		expect(v.gaps).toEqual([]);
+		// A newer market day in any daily series also marks the NAV carried, not unavailable.
+		const [m] = run({
+			...plan401k,
+			prices: book({
+				'netbenefits:p:FUND': [['2026-01-09', 50]],
+				'tiingo:BBB': [['2026-01-12', 100]]
+			}),
+			end: '2026-01-12'
+		});
+		expect(m.values).toEqual([100, 100, 100, 100]);
+		expect(m.carried).toEqual([false, false, false, true]);
+		// Before the first NAV there is nothing to carry.
+		const [none] = run({
+			...plan401k,
+			prices: book({ 'netbenefits:p:FUND': [['2026-01-10', 50]] }),
+			end: '2026-01-10'
+		});
+		expect(none.values).toEqual([null, 100]);
+		expect(none.carried).toEqual([false, false]);
+	});
+
 	it('blocks every day when ledger units disagree with observed holdings or a gate failed', () => {
 		const [observed] = run({
 			observed: [{ account_id: 'b', security_id: 'AAA', date: '2026-01-06', units: 21 }]
@@ -280,5 +326,21 @@ describe('investment valuation', () => {
 			]
 		});
 		expect(valuedCoverage([cov('x')], [v])[0]).toEqual(cov('x'));
+	});
+
+	it('says a carried plan-fund value is carried, never verified', () => {
+		const [v] = run({
+			accounts: [plan],
+			txns: [txn('p', '2026-01-09', 100, 2, 'FUND')],
+			coverage: [cov('p', 'units')],
+			mappings: [{ account_id: 'p', security_id: 'FUND', provider: 'netbenefits', symbol: null }],
+			prices: book({ 'netbenefits:p:FUND': [['2026-01-09', 50]] }),
+			end: '2026-01-21'
+		});
+		expect(valuedCoverage([cov('p', 'units')], [v])[0]).toMatchObject({
+			status: 'carried',
+			valuedAsOf: '2026-01-09',
+			reasons: ['NAV from 2026-01-09 carried forward, 12 days old']
+		});
 	});
 });
