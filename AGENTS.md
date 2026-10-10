@@ -73,19 +73,25 @@ protects the site and every API route.
   a monetary gate (a workplace plan exposes none). A day is available only when
   every holding has a mapped price no older than four days with no newer market
   day in any cached series; otherwise it is null with a reason, never zero, never
-  carried forward. Groups with an unavailable member are unavailable; totals add
-  only available values. Unit-gate, custody-cash-gate or observed-units
-  disagreements, and splits the ledger records on another day, block valuation.
-  Execution prices are never NAVs and market moves never become transactions.
-  Coverage is verified only when the end date is priced (`valuedAsOf` = oldest
-  price date); otherwise "Investment value unavailable" with the reason.
+  carried forward. The one exception is a `netbenefits` plan fund: its NAV exists
+  only as finance-run observations, so the last NAV carries forward until the next
+  one. Such a day is marked `carried`, still counts in totals, and Overview labels
+  it "As of <NAV date> · NAV N days old". Groups with an unavailable member are
+  unavailable; totals add only available values. Unit-gate, custody-cash-gate or
+  observed-units disagreements, and splits the ledger records on another day,
+  block valuation. Brokerage execution prices are never NAVs and market moves
+  never become transactions. Coverage is verified only when the end date is
+  freshly priced (`valuedAsOf` = oldest price date); a carried end date is
+  "Carried NAV" with the NAV date and age, never verified; otherwise "Investment
+  value unavailable" with the reason.
 - Prices live in Networth's own `PRICES_DB` (`networth-prices`,
   `migrations-prices/`): `price_mappings` (owner data: account + exact ledger
   security -> tiingo symbol, Fidelity fund number, alphavantage symbol, or
   netbenefits) edited on `/investments` via `/api/price-mappings`, and
   `price_closes` (raw provider closes keyed provider/symbol/date). NetBenefits plan
   funds have no public series: their NAVs are Soma `investment_observations`
-  recorded during finance runs, joined only within their own instrument's account.
+  recorded during finance runs (the current NAV, month-end closes and the plan's
+  per-transaction unit prices), joined only within their own instrument's account.
   The daily cron (`worker.js` `scheduled`, `triggers.crons`) and the dashboard's
   Fetch prices both POST `/api/prices/refresh`: a new series backfills its whole
   Tiingo history once, then refetches a 10-day overlap. Provider failures never

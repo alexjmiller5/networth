@@ -1,7 +1,10 @@
 // Market value of investment accounts: signed ledger positions times dated
 // raw prices, plus custody cash where the source exposes it. Market moves never
 // become transactions; a day without a usable price for every holding is
-// unavailable, never zero and never carried across a newer market day.
+// unavailable, never zero and never carried across a newer market day. The one
+// exception is a workplace plan fund (netbenefits): its NAV is only captured
+// during finance runs, so it carries forward until the next capture and the day
+// is marked carried.
 import { addDays } from './presets';
 import { assetClass, dateRange } from './series';
 import type { Account, AccountCoverage, Txn } from './types';
@@ -47,6 +50,8 @@ export interface AccountValuation {
 	values: (number | null)[];
 	/** Oldest price date behind each available value; null when only cash was held. */
 	priceDates: (string | null)[];
+	/** True where a plan-fund NAV older than the daily price rule was carried forward. */
+	carried: boolean[];
 	gaps: ValuationGap[];
 }
 
@@ -60,6 +65,11 @@ export function priceKey(
 
 const days = (from: string, to: string) =>
 	Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+/** "12 days old": the age of a carried NAV on a given day. */
+export const navAge = (navDate: string, day: string) => {
+	const n = days(navDate, day);
+	return `${n} ${n === 1 ? 'day' : 'days'} old`;
+};
 const round = (n: number) => Math.round(n * 100) / 100;
 
 /** Latest point on or before date (points ascending). */
@@ -204,10 +214,12 @@ export function valueAccounts(input: {
 
 		const values: (number | null)[] = [];
 		const priceDates: (string | null)[] = [];
+		const carried: boolean[] = [];
 		dates.forEach((date, i) => {
 			let reason = blockers[0] ?? dayReasons[i];
 			let value = cash[i];
 			let oldest: string | null = null;
+			let stale = false;
 			for (const [ticker, qty] of positions[i]) {
 				if (reason) break;
 				const m = mappingOf.get(`${account.id}\u0000${ticker}`);
@@ -215,15 +227,20 @@ export function valueAccounts(input: {
 				if (qty < 0) reason = `Negative ${ticker} position`;
 				else if (!m) reason = `No price source for ${ticker}`;
 				else if (!p) reason = `No ${m.provider} price for ${ticker}`;
-				else if (days(p.date, date) > MAX_PRICE_AGE_DAYS || newerMarketDay(p.date, date))
-					reason = `Latest ${m.provider} price for ${ticker} is from ${p.date}`;
 				else {
-					value += qty * p.price;
-					if (!oldest || p.date < oldest) oldest = p.date;
+					const fresh = days(p.date, date) <= MAX_PRICE_AGE_DAYS && !newerMarketDay(p.date, date);
+					if (!fresh && m.provider !== 'netbenefits')
+						reason = `Latest ${m.provider} price for ${ticker} is from ${p.date}`;
+					else {
+						value += qty * p.price;
+						if (!oldest || p.date < oldest) oldest = p.date;
+						stale ||= !fresh;
+					}
 				}
 			}
 			values.push(reason ? null : round(value));
 			priceDates.push(reason ? null : oldest);
+			carried.push(!reason && stale);
 			dayReasons[i] = reason;
 		});
 		const gaps: ValuationGap[] = [];
@@ -234,12 +251,13 @@ export function valueAccounts(input: {
 			if (last && last.reason === reason && last.end === addDays(date, -1)) last.end = date;
 			else gaps.push({ start: date, end: date, reason });
 		});
-		out.push({ account_id: account.id, start, end, values, priceDates, gaps });
+		out.push({ account_id: account.id, start, end, values, priceDates, carried, gaps });
 	}
 	return out;
 }
 
-/** Investment coverage after valuation: verified only when reconciled and priced on the end date. */
+/** Investment coverage after valuation: verified only when reconciled and freshly priced on the
+ * end date; a carried plan-fund NAV is labelled carried with its age, never verified. */
 export function valuedCoverage(
 	coverage: AccountCoverage[],
 	valuations: AccountValuation[]
@@ -257,8 +275,17 @@ export function valuedCoverage(
 					...(v.gaps.length ? ['Some historical market values are unavailable'] : [])
 				]
 			};
-		if (last !== null && last !== undefined)
-			return { ...c, status: 'verified', valuedAsOf: v.priceDates.at(-1) ?? v.end, reasons: [] };
+		if (last !== null && last !== undefined) {
+			const valuedAsOf = v.priceDates.at(-1) ?? v.end;
+			return v.carried.at(-1)
+				? {
+						...c,
+						status: 'carried',
+						valuedAsOf,
+						reasons: [`NAV from ${valuedAsOf} carried forward, ${navAge(valuedAsOf, v.end)}`]
+					}
+				: { ...c, status: 'verified', valuedAsOf, reasons: [] };
+		}
 		const gap = v.gaps.at(-1);
 		return {
 			...c,

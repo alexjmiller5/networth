@@ -397,6 +397,7 @@ describe('investment valuation', () => {
 				end: '2026-01-06',
 				values: [700, 721],
 				priceDates: ['2026-01-05', '2026-01-06'],
+				carried: [false, false],
 				gaps: []
 			}
 		]);

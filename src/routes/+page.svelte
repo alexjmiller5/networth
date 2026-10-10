@@ -4,7 +4,7 @@
 	import MarkersDialog from '$lib/components/MarkersDialog.svelte';
 	import FinanceRunCard from '$lib/components/FinanceRunCard.svelte';
 	import { visibleMarkers, type Marker, type MarkerInput } from '$lib/finance/markers';
-	import { formatMoney, formatUnits, formatCoverage } from '$lib/finance/display';
+	import { formatMoney, formatUnits, formatCoverage, valuationLabel } from '$lib/finance/display';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
 	import IconHeartHandshake from '@tabler/icons-svelte/icons/heart-handshake';
 	import IconEyeOff from '@tabler/icons-svelte/icons/eye-off';
@@ -133,13 +133,11 @@
 	const view = $derived(
 		buildView(data.txns, accounts, categories, viewState, data.coverage, data.valuations ?? [])
 	);
-	/** Oldest price date behind an investment account's value at the shown end date. */
-	function pricedAsOf(key: string): string | null | undefined {
+	/** Price date (and carried NAV age) behind an investment account's value at the shown end date. */
+	function pricedAsOf(key: string): string | undefined {
 		const v =
 			groupBy === 'account' ? data.valuations?.find((x) => x.account_id === key) : undefined;
-		if (!v || viewState.dateEnd < v.start || viewState.dateEnd > v.end) return undefined;
-		const i = Math.round((Date.parse(viewState.dateEnd) - Date.parse(v.start)) / 86_400_000);
-		return v.values[i] === null ? undefined : (v.priceDates[i] ?? undefined);
+		return v && valuationLabel(v, viewState.dateEnd);
 	}
 	const groupBy = $derived(controls.groupBy);
 	const groupKeys = (list: Account[]) =>
@@ -763,7 +761,7 @@
 						{:else if row.value === null}{coverage
 								? coverageText(coverage).label
 								: 'Not verified'}{#if coverage?.status === 'investment-unvalued' && coverage.reasons.length}{` · ${coverageText(coverage).details}`}{/if}
-						{:else if pricedAsOf(row.key)}Market value as of {pricedAsOf(row.key)}
+						{:else if pricedAsOf(row.key)}{pricedAsOf(row.key)}
 						{:else if coverage?.asOf}Checked {coverage.asOf.slice(0, 10)}
 						{:else}Verified subtotal{/if}
 					</p>
@@ -804,7 +802,7 @@
 	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
 		<span
 			>{incomplete
-				? 'Incomplete coverage. Charts include verified monetary accounts and investment market values on days every holding has a current price; gaps are unavailable, never zero.'
+				? 'Incomplete coverage. Charts include verified monetary accounts and investment market values on days every holding has a current price (workplace plan NAVs carry forward between captures); gaps are unavailable, never zero.'
 				: 'Balances include verified monetary accounts and priced investment holdings.'}{assets.length
 				? ' Deposits come from evidenced principal events.'
 				: ''}</span
