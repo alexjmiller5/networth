@@ -136,7 +136,7 @@ class Api:
         return self._call("PATCH", f"/api/finance-host/v1/runs/{run_id}", fields)["run"]
 
     def session(self):
-        return self._call("GET", "/api/device/session")
+        return self._call("GET", "/api/finance-host/v1/session")
 
 
 def token_source(cfg):
@@ -186,8 +186,8 @@ def enroll(cfg, label, store=None, sleep=time.sleep):
     device_id, token = str(uuid.uuid4()), "nw_" + secrets.token_hex(32)
     digest = hashlib.sha256(token.encode()).hexdigest()
     (store or (lambda t: keychain_store(cfg.url, t)))(token)
-    query = urlencode({"id": device_id, "hash": digest, "label": label, "kind": "host"})
-    print(f"Approve this host in Networth (code {digest[:8].upper()}):\n  {cfg.url}/widgets#{query}", flush=True)
+    query = urlencode({"id": device_id, "hash": digest, "label": label})
+    print(f"Approve this host in Networth (code {digest[:8].upper()}):\n  {cfg.url}/hosts#{query}", flush=True)
     api = Api(cfg.url, lambda: token)
     for _ in range(200):
         try:
@@ -211,7 +211,6 @@ def enroll(cfg, label, store=None, sleep=time.sleep):
                 "device_id": device_id,
                 "url": cfg.url,
                 "label": label,
-                "kind": "host",
                 "approved_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 "credential": f"login Keychain item {KEYCHAIN_SERVICE} / {cfg.url}",
             },

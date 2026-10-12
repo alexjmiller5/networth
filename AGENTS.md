@@ -435,44 +435,24 @@ deploys target his Cloudflare account.
   suite; verify the production build with browser networking disabled, not Vite dev
   (SvelteKit only registers the service worker in production).
 
-## Native widget devices
+## Finance hosts
 
-- Networth owns `WIDGETS_DB` (`networth-widgets`), separate from financial
-  source storage. Its schema is in `migrations-widgets/`; provision with
-  `scripts/cf-d1.py` and apply migrations using the owning operator identity.
-- `/widgets` and `/api/widget-devices` require Cloudflare Access. Mutations also
-  require exact same-origin requests. The Access assertion header is checked
-  for presence as defense in depth, not represented as local JWT verification.
-- Only `/api/device/*` and the finance host routes (below) may bypass browser
-  Access. The device API has an explicit allowlist:
-  GET session, GET snapshot and DELETE session. A native device generates a
-  random `nw_` credential and stores it in Keychain; only its SHA-256 fingerprint
-  reaches the approval page. No Soma, operator or browser credential goes
-  to native consumers. This is the app-owned consumer pattern: the widget is
-  Networth's consumer (its own `nw_` credential, `WIDGETS_DB`), and Networth
-  alone is Soma's consumer; `/api/device/*` reads Soma server-side with
-  `SOMA_HUB_TOKEN` and returns only projected widget fields. Public callers cannot stage or approve enrollment.
+- Networth owns `HOSTS_DB` (D1 database `networth-widgets`, its original name;
+  schema in `migrations-hosts/`), separate from financial source storage.
+  Provision with `scripts/cf-d1.py` and apply migrations using the owning
+  operator identity.
+- `/hosts` and `/api/hosts` require Cloudflare Access. Mutations also require
+  exact same-origin requests. The Access assertion header is checked for
+  presence as defense in depth, not represented as local JWT verification.
+- Only `/api/finance-host/v1/*` (session, claim, runs) bypasses browser Access;
+  every request re-authenticates its bearer. A host generates a random `nw_`
+  credential and keeps it in its login Keychain; only its SHA-256 fingerprint
+  reaches the approval page. No Soma, operator or browser credential reaches a
+  host, and host routes return no financial data. Public callers cannot stage
+  or approve enrollment.
 - Pending enrollment expires in ten minutes. Exact retries preserve expiry;
   conflicting identity and revoked fingerprints cannot be reactivated. The
-  owner may revoke one device; an offline cached snapshot cannot be remotely
-  erased until the device reconnects or its app is removed.
-- Widget balances reuse verified ledger selection and retain per-account source
-  dates. Snapshot fetch time is not collection time. The device API projects
-  only widget fields and rechecks revocation after slow source reads.
-- The one configurable widget has six views: card balances, which card (per ledger
-  category this quarter, from verified typed earning terms; unknown cards stay
-  unknown and no pick is made unless every card is known), cap headroom, available
-  rewards, expiry and freshness. Reward sections (`rewards`, `expiry`, `caps`,
-  `guidance`) are optional fields of the version 1 snapshot from
-  `widgetRewards()`; a failed rewards or category read omits them
-  (`rewardsUnavailable`, `guidance: null`) without withholding balances. Hide
-  amounts masks every amount in every view.
-- The native app and extension use the same configured App Group and separate
-  exact Ad Hoc profiles. `ios/justfile` exposes simulator checks, tests, and a
-  release archive through `scripts/sign-widgets.py`. Signing inputs come from
-  the caller's credential provider; the helper verifies both exported targets
-  and removes its temporary keychain and profile copies. Native enrollment is
-  device state and must be repeated on replacement phones.
+  owner may revoke one host.
 
 ## Finance review runs
 
@@ -482,12 +462,9 @@ deploys target his Cloudflare account.
   Browser routes `/api/finance/runs` (GET, POST) and `/api/finance/runs/{id}/cancel`
   require Access plus same-origin mutations. Cancel ends a queued run at once
   and flags a claimed run for the host.
-- The host is a `widget_devices` row with `kind = 'host'`, enrolled through the
-  same `/widgets` approval (`#...&kind=host`). Host devices cannot read widget
-  snapshots and widget devices cannot claim runs. Only
-  `/api/finance-host/v1/claim` and `/api/finance-host/v1/runs/*` bypass Access;
-  each request re-authenticates the bearer. A host sees and reports only runs it
-  claimed, forward transitions only.
+- The host is a `hosts` row (see Finance hosts) approved on `/hosts`;
+  `networth-host enroll` polls `/api/finance-host/v1/session` until then. A host
+  sees and reports only runs it claimed, forward transitions only.
 - `host/` is the installed companion (stdlib Python, flake package plus
   `darwinModules.default`). It long-polls claim (25 s holds, 2 s server checks),
   opens a Herdr tab, starts Claude and falls back to Codex when Claude cannot
@@ -497,6 +474,6 @@ deploys target his Cloudflare account.
   only by the launchd agent; agent panes cannot read the Keychain, so
   `networth-host report` queues a file the daemon delivers. A restarted daemon
   resumes its claimed run and adopts an existing agent instead of relaunching.
-- Tests: `bun run test` (store, routes, devices) and
+- Tests: `bun run test` (stores and routes) and
   `cd host && uv run --no-project --with pytest pytest -q tests`. The nix build
   runs the host tests too.

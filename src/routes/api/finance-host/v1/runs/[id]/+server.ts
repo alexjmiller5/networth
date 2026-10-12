@@ -1,16 +1,11 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { parseHostPatch, validRunId } from '$lib/finance/run-contract';
 import { FinanceRuns, runsDatabase } from '$lib/server/finance-runs';
-import {
-	hostDevice,
-	widgetBody,
-	widgetFailure as fail,
-	widgetHeaders as headers
-} from '$lib/server/widget-http';
+import { activeHost, jsonBody, failure as fail, privateHeaders as headers } from '$lib/server/http';
 
 // Bypasses browser Access; a host sees and reports only runs it claimed.
 export const GET: RequestHandler = async ({ platform, request, params }) => {
-	const host = await hostDevice(platform, request);
+	const host = await activeHost(platform, request);
 	if (host instanceof Response) return host;
 	const db = runsDatabase(platform);
 	if (!db) return fail(503, 'Finance runs are not configured.');
@@ -24,9 +19,9 @@ export const GET: RequestHandler = async ({ platform, request, params }) => {
 };
 
 export const PATCH: RequestHandler = async ({ platform, request, params }) => {
-	const host = await hostDevice(platform, request);
+	const host = await activeHost(platform, request);
 	if (host instanceof Response) return host;
-	const body = await widgetBody(request);
+	const body = await jsonBody(request);
 	const patch = body && parseHostPatch(body);
 	if (!patch) return fail(400, 'Invalid run report.');
 	const db = runsDatabase(platform);

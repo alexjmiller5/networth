@@ -1,38 +1,24 @@
 import { beforeEach, afterEach, expect, it } from 'vitest';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { WidgetDevices, hashWidgetToken } from './widget-devices';
+import { sqliteD1, hostMigrations } from './sqlite-d1';
+import { Hosts, hashHostToken } from './hosts';
 let sqlite: DatabaseSync;
-let store: WidgetDevices;
+let store: Hosts;
 const now = 2_000_000_000_000;
 const id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
 const secret = `nw_${'01'.repeat(32)}`;
 let hash: string;
 beforeEach(async () => {
-	sqlite = new DatabaseSync(':memory:');
-	for (const m of ['0001_devices', '0002_device_kind'])
-		sqlite.exec(readFileSync(`migrations-widgets/${m}.sql`, 'utf8'));
-	const db = {
-		prepare(sql: string) {
-			const stmt = sqlite.prepare(sql);
-			const bind = (...values: (string | number | null)[]) => ({
-				async first() {
-					return stmt.get(...values) ?? null;
-				},
-				async all() {
-					return { results: stmt.all(...values) };
-				}
-			});
-			return { ...bind(), bind };
-		}
-	} as unknown as D1Database;
-	store = new WidgetDevices(db);
-	hash = await hashWidgetToken(secret);
+	let db: D1Database;
+	({ sqlite, db } = sqliteD1(...hostMigrations));
+	store = new Hosts(db);
+	hash = await hashHostToken(secret);
 });
 afterEach(() => sqlite.close());
 it('requires approval before authentication, and never stores the credential', async () => {
 	expect(await store.authenticate(secret, now)).toBeNull();
-	expect(await store.stage({ id, hash, label: 'Example phone' }, now)).toMatchObject({
+	expect(await store.stage({ id, hash, label: 'Example host' }, now)).toMatchObject({
 		state: 'pending',
 		expires_at: now + 600000
 	});
@@ -41,11 +27,9 @@ it('requires approval before authentication, and never stores the credential', a
 	expect(await store.authenticate(secret, now + 700000)).toMatchObject({
 		id,
 		state: 'active',
-		label: 'Example phone'
+		label: 'Example host'
 	});
-	expect(JSON.stringify(sqlite.prepare('SELECT * FROM widget_devices').all())).not.toContain(
-		secret
-	);
+	expect(JSON.stringify(sqlite.prepare('SELECT * FROM hosts').all())).not.toContain(secret);
 	expect(await store.authenticate(hash, now)).toBeNull();
 });
 it('makes exact staging and approval replays safe without changing identity or resetting expiry', async () => {
@@ -57,7 +41,7 @@ it('makes exact staging and approval replays safe without changing identity or r
 	).rejects.toThrow();
 	expect(await store.approve(id, now + 1)).toBe(true);
 	expect(await store.approve(id, now + 2)).toBe(true);
-	expect(sqlite.prepare('SELECT count(*) AS n FROM widget_devices').get()?.n).toBe(1);
+	expect(sqlite.prepare('SELECT count(*) AS n FROM hosts').get()?.n).toBe(1);
 });
 it('cannot approve expired enrollment, revive it by replay, or activate at the expiry boundary', async () => {
 	await store.stage({ id, hash, label: 'Example' }, now);
@@ -103,27 +87,24 @@ it('validates enrollment inputs and bounds pending and active registry capacity'
 		state: 'pending'
 	});
 });
-it('records host devices separately from widgets and keeps the kind through replay', async () => {
-	expect(await store.stage({ id, hash, label: 'Mac mini', kind: 'host' }, now)).toMatchObject({
-		kind: 'host',
-		state: 'pending'
-	});
-	expect(await store.stage({ id, hash, label: 'Mac mini', kind: 'host' }, now + 1)).toMatchObject({
-		kind: 'host'
-	});
-	await expect(store.stage({ id, hash, label: 'Mac mini' }, now + 2)).rejects.toThrow();
-	await store.approve(id, now + 3);
-	expect(await store.authenticate(secret, now + 4)).toMatchObject({
-		kind: 'host',
-		state: 'active'
-	});
-	expect(
-		await store.stage(
-			{ id: 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb', hash: '0'.repeat(64), label: 'Phone' },
-			now
-		)
-	).toMatchObject({ kind: 'widget' });
-	await expect(
-		store.stage({ id, hash, label: 'x', kind: 'admin' as 'host' }, now)
-	).rejects.toThrow();
+it('keeps host rows and drops every phone row when the hosts-only migration runs', async () => {
+	const old = sqliteD1(...hostMigrations.slice(0, 2)).sqlite;
+	const insert = old.prepare(
+		'INSERT INTO widget_devices (id, hash, label, kind, created_at, expires_at, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+	);
+	insert.run(id, hash, 'Mac mini', 'host', now, now + 1, now);
+	insert.run(
+		'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
+		'0'.repeat(64),
+		'Phone',
+		'widget',
+		now,
+		now + 1,
+		now
+	);
+	old.exec(readFileSync(hostMigrations[2], 'utf8'));
+	expect(old.prepare('SELECT id, label, approved_at FROM hosts').all()).toEqual([
+		{ id, label: 'Mac mini', approved_at: now }
+	]);
+	old.close();
 });

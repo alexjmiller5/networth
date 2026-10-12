@@ -27,3 +27,7 @@ export function sqliteD1(...migrations: string[]) {
 	} as unknown as D1Database;
 	return { db, sqlite };
 }
+
+export const hostMigrations = ['0001_devices', '0002_device_kind', '0003_hosts_only'].map(
+	(m) => `migrations-hosts/${m}.sql`
+);

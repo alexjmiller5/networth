@@ -16,10 +16,11 @@
 	// Networth owns this database. Local Wrangler uses isolated on-disk D1 state.
 	"d1_databases": [
 		{
-			"binding": "WIDGETS_DB",
+			// Enrolled finance hosts. The database keeps its original name.
+			"binding": "HOSTS_DB",
 			"database_name": "networth-widgets",
 			"database_id": "b3b28b4b-bd99-4654-9974-665d7e1c948c",
-			"migrations_dir": "migrations-widgets"
+			"migrations_dir": "migrations-hosts"
 		},
 		{
 			"binding": "MARKERS_DB",

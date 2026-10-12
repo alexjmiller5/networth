@@ -28,11 +28,3 @@ vite.config.ts.timestamp-*
 
 # Implementation scratch
 .superpowers/
-
-# Native generated/build products
-/ios/*.xcodeproj/
-/ios/App/Info.plist
-/ios/App/*.entitlements
-/ios/Widgets/Info.plist
-/ios/Widgets/*.entitlements
-/ios/build/

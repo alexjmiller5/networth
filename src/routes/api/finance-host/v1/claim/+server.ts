@@ -1,19 +1,14 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { FinanceRuns, runsDatabase } from '$lib/server/finance-runs';
-import {
-	hostDevice,
-	widgetBody,
-	widgetFailure as fail,
-	widgetHeaders as headers
-} from '$lib/server/widget-http';
+import { activeHost, jsonBody, failure as fail, privateHeaders as headers } from '$lib/server/http';
 
-// Bypasses browser Access; only an approved host device gets past hostDevice().
+// Bypasses browser Access; only an approved host gets past activeHost().
 const POLL_MS = 2000;
 
 export const POST: RequestHandler = async ({ platform, request }) => {
-	const first = await hostDevice(platform, request);
+	const first = await activeHost(platform, request);
 	if (first instanceof Response) return first;
-	const body = await widgetBody(request);
+	const body = await jsonBody(request);
 	const wait = body?.wait_seconds ?? 0;
 	if (
 		!body ||
@@ -33,7 +28,7 @@ export const POST: RequestHandler = async ({ platform, request }) => {
 			if (run || Date.now() >= deadline) return json({ run }, { headers });
 			await new Promise((resolve) => setTimeout(resolve, POLL_MS));
 			// Revocation during the hold takes effect before the next claim.
-			const again = await hostDevice(platform, request);
+			const again = await activeHost(platform, request);
 			if (again instanceof Response) return again;
 			host = again;
 		}

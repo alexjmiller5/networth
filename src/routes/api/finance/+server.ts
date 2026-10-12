@@ -150,7 +150,7 @@ async function pull(
 	}
 }
 
-export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], widgetsOnly = false) {
+export async function GET({ platform, fetch }: Parameters<RequestHandler>[0]) {
 	const env = { ...privateEnv, ...platform?.env } as {
 		SOMA_HUB_URL?: string;
 		SOMA_HUB_TOKEN?: string;
@@ -159,7 +159,7 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 	const token = env.SOMA_HUB_TOKEN;
 	if (!hub || !token) throw error(503, 'Finance data is not configured yet.');
 
-	const prices = widgetsOnly ? undefined : platform?.env?.PRICES_DB;
+	const prices = platform?.env?.PRICES_DB;
 	// Native NAV and unit observations load alongside the estate, only when prices can use them.
 	const native = prices
 		? Promise.all([
@@ -169,68 +169,25 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 		: null;
 	native?.catch(() => undefined);
 	try {
-		// Widgets need balances first. Card categories (for guidance) are best-effort there,
-		// so an unrelated source failure never blocks a balance refresh.
-		const optional = ['overlay', 'shares', 'categories'];
-		const pulled: Record<string, HubRow[] | null> = Object.fromEntries(
+		const pulled: Record<string, HubRow[]> = Object.fromEntries(
 			await Promise.all(
 				Object.entries(TABLES).map(async ([t, cols]) => [
 					t,
-					widgetsOnly && !['accounts', 'scrape_runs', ...optional].includes(t)
-						? []
-						: await pull(
-								hub,
-								token,
-								HUB_TABLE[t]?.table ?? t,
-								cols,
-								fetch,
-								HUB_TABLE[t]?.where
-							).catch((e) => {
-								if (widgetsOnly && optional.includes(t)) return null;
-								throw e;
-							})
+					await pull(hub, token, HUB_TABLE[t]?.table ?? t, cols, fetch, HUB_TABLE[t]?.where)
 				])
 			)
 		);
-		// Partial category data would mislabel spend: use none of it.
-		const categoriesUnavailable = optional.some((t) => pulled[t] === null);
-		if (categoriesUnavailable) for (const t of optional) pulled[t] = [];
-		const { accounts } = pulled as Record<string, HubRow[]>;
-		// Reuse registry normalization, including both supported closure fields.
-		const cardIds = widgetsOnly
-			? new Set(
-					assemble({
-						accounts,
-						overlay: [],
-						shares: [],
-						points: [],
-						categories: [],
-						scrape_runs: [],
-						venmo_statement_lines: [],
-						txns: {}
-					})
-						.accounts.filter((a) => a.type === 'credit_card' && !a.closed)
-						.map((a) => a.id)
-				)
-			: null;
-		const selectedAccounts = cardIds ? accounts.filter((a) => cardIds.has(String(a.id))) : accounts;
-		const sources = [
-			...new Set(selectedAccounts.filter((a) => a.deleted_at == null).map((a) => a.source))
-		];
+		const { accounts } = pulled;
+		const sources = [...new Set(accounts.filter((a) => a.deleted_at == null).map((a) => a.source))];
 		if (sources.some((s) => typeof s !== 'string' || !/^[a-z][a-z0-9_]*$/.test(s)))
 			throw new Error('Invalid source');
 		const txnRows = await Promise.all(
 			sources.map((s) => pull(hub, token, `txns_${s}`, TXN_COLUMNS, fetch))
 		);
-		const txns = Object.fromEntries(
-			sources.map((s, i) => [
-				s,
-				cardIds ? txnRows[i].filter((t) => cardIds.has(String(t.account_id))) : txnRows[i]
-			])
-		);
+		const txns = Object.fromEntries(sources.map((s, i) => [s, txnRows[i]]));
 		const estate = assemble({
 			...(pulled as Omit<EstateTables, 'accounts' | 'txns'>),
-			accounts: selectedAccounts,
+			accounts,
 			txns
 		});
 		let valued: Pick<typeof estate, 'coverage' | 'valuations'> = { coverage: estate.coverage };
@@ -257,8 +214,7 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0], wi
 				categories: estate.categories.map((category) => ({
 					...category,
 					iconUrl: categoryIconUrl(category.icon)
-				})),
-				...(widgetsOnly ? { categoriesUnavailable } : {})
+				}))
 			},
 			{
 				headers: { 'cache-control': 'private, no-store' }

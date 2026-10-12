@@ -1,41 +1,40 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { FinanceRun } from '$lib/finance/run-contract';
 import type { DatabaseSync } from 'node:sqlite';
-import { sqliteD1 } from '$lib/server/sqlite-d1';
-import { WidgetDevices, hashWidgetToken } from '$lib/server/widget-devices';
+import { sqliteD1, hostMigrations } from '$lib/server/sqlite-d1';
+import { Hosts, hashHostToken } from '$lib/server/hosts';
 import { FinanceRuns } from '$lib/server/finance-runs';
 import { POST as claim } from './claim/+server';
 import { GET, PATCH } from './runs/[id]/+server';
+import { GET as session } from './session/+server';
 
-let widgets: DatabaseSync, runsDb: DatabaseSync;
+let hostsDb: DatabaseSync, runsDb: DatabaseSync;
 let platform: App.Platform;
 let runs: FinanceRuns;
 const host = `nw_${'01'.repeat(32)}`,
-	widget = `nw_${'02'.repeat(32)}`,
+	revoked = `nw_${'02'.repeat(32)}`,
 	pending = `nw_${'03'.repeat(32)}`;
 beforeEach(async () => {
-	const w = sqliteD1(
-		'migrations-widgets/0001_devices.sql',
-		'migrations-widgets/0002_device_kind.sql'
-	);
+	const w = sqliteD1(...hostMigrations);
 	const r = sqliteD1('migrations-finance-runs/0001_runs.sql');
-	widgets = w.sqlite;
+	hostsDb = w.sqlite;
 	runsDb = r.sqlite;
-	platform = { env: { WIDGETS_DB: w.db, FINANCE_RUNS_DB: r.db } } as unknown as App.Platform;
+	platform = { env: { HOSTS_DB: w.db, FINANCE_RUNS_DB: r.db } } as unknown as App.Platform;
 	runs = new FinanceRuns(r.db);
-	const devices = new WidgetDevices(w.db),
+	const hosts = new Hosts(w.db),
 		now = Date.now();
-	const enroll = async (token: string, n: number, kind: 'host' | 'widget', approve = true) => {
+	const enroll = async (token: string, n: number, approve = true) => {
 		const id = `aaaaaaaa-aaaa-4aaa-aaaa-00000000000${n}`;
-		await devices.stage({ id, hash: await hashWidgetToken(token), label: 'Device', kind }, now);
-		if (approve) await devices.approve(id, now);
+		await hosts.stage({ id, hash: await hashHostToken(token), label: 'Host' }, now);
+		if (approve) await hosts.approve(id, now);
+		return id;
 	};
-	await enroll(host, 1, 'host');
-	await enroll(widget, 2, 'widget');
-	await enroll(pending, 3, 'host', false);
+	await enroll(host, 1);
+	await hosts.revoke(await enroll(revoked, 2), now);
+	await enroll(pending, 3, false);
 });
 afterEach(() => {
-	widgets.close();
+	hostsDb.close();
 	runsDb.close();
 });
 const event = (method: string, token: string | null, body?: unknown, id?: string) =>
@@ -53,9 +52,9 @@ const event = (method: string, token: string | null, body?: unknown, id?: string
 		})
 	}) as unknown as Parameters<typeof claim>[0];
 
-it('admits only an approved host device', async () => {
+it('admits only an approved host', async () => {
 	await runs.create({ requestId: 'r1', accountIds: ['cash'] }, Date.now());
-	for (const token of [null, widget, pending, 'nw_bad'])
+	for (const token of [null, revoked, pending, 'nw_bad'])
 		expect([401, 403]).toContain((await claim(event('POST', token, { wait_seconds: 0 }))).status);
 	expect(runsDb.prepare('SELECT status FROM finance_runs').get()?.status).toBe('queued');
 });
@@ -88,7 +87,7 @@ it('long-polls until a run is queued, then reports progress and completion', asy
 	expect(await (await GET(event('GET', host, undefined, run.id))).json()).toMatchObject({
 		run: { cancel_requested: true, status: 'running' }
 	});
-	expect((await GET(event('GET', widget, undefined, run.id))).status).toBe(403);
+	expect((await GET(event('GET', revoked, undefined, run.id))).status).toBe(403);
 	expect(await (await patch({ status: 'canceled', summary: 'Stopped' })).json()).toMatchObject({
 		run: { status: 'canceled' }
 	});
@@ -98,4 +97,15 @@ it('long-polls until a run is queued, then reports progress and completion', asy
 it('rejects malformed claims', async () => {
 	for (const body of [{ wait_seconds: 26 }, { wait_seconds: -1 }, { wait_seconds: 1, x: 1 }])
 		expect((await claim(event('POST', host, body))).status).toBe(400);
+});
+
+it('tells an enrolling host its own state, whatever it is, and nobody else anything', async () => {
+	for (const [token, state] of [
+		[pending, 'pending'],
+		[host, 'active'],
+		[revoked, 'revoked']
+	])
+		expect(await (await session(event('GET', token))).json()).toMatchObject({ state });
+	for (const token of [null, 'nw_bad', `nw_${'04'.repeat(32)}`])
+		expect((await session(event('GET', token))).status).toBe(401);
 });

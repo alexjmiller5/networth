@@ -169,10 +169,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         Handler.seen.append((self.command, self.path, self.headers.get("Authorization")))
-        n = sum(1 for s in Handler.seen if s[1] == "/api/device/session")
+        n = sum(1 for s in Handler.seen if s[1] == "/api/finance-host/v1/session")
         if n < Handler.approve_after:
-            return self.reply(401, {"error": "Enroll this device in Networth."})
-        self.reply(200, {"state": "active", "scope": "finance-host"})
+            return self.reply(401, {"error": "Enroll this host in Networth."})
+        self.reply(200, {"state": "active"})
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -212,8 +212,8 @@ def test_enroll_stores_the_token_first_then_waits_for_approval(server, tmp_path,
     token = stored[0]
     assert token.startswith("nw_") and len(token) == 67
     out = capsys.readouterr().out
-    assert f"{server}/widgets#id=" in out and "kind=host" in out and token not in out
+    assert f"{server}/hosts#id=" in out and "kind=" not in out and token not in out
     assert all(s[2] == f"Bearer {token}" for s in Handler.seen)
     saved = json.loads((tmp_path / "enrollment.json").read_text())
     assert saved == json.loads(receipt.read_text()) and token not in receipt.read_text()
-    assert saved["kind"] == "host" and saved["url"] == server
+    assert "kind" not in saved and saved["url"] == server

@@ -150,10 +150,11 @@ Run storage is this Worker's `FINANCE_RUNS_DB` (`networth-finance-runs`,
 schema in `migrations-finance-runs/`). Provision it like the other databases
 with `scripts/cf-d1.py`, then apply migrations with
 `bunx wrangler d1 migrations apply networth-finance-runs --remote`.
-Cloudflare Access must bypass exactly the host routes:
-`--public-path /api/finance-host/v1/claim --public-path '/api/finance-host/v1/runs/*'`
-next to the existing `--pwa --public-path '/api/device/*'` flags of
-`scripts/cf-access.py`.
+Cloudflare Access must bypass exactly the host routes: pass
+`--public-path '/api/finance-host/v1/*'` next to `--pwa` to
+`scripts/cf-access.py`. Host enrollment lives in its own D1 database
+(binding `HOSTS_DB`, schema in `migrations-hosts/`); apply its migrations with
+`bunx wrangler d1 migrations apply networth-widgets --remote`.
 
 ### Installing the host
 
@@ -189,9 +190,9 @@ networth-host enroll --label "Mac mini"
 ```
 
 It saves a random credential in the login Keychain, prints an approval link
-and waits. Open the link (it lands on `/widgets` behind Access), check the
+and waits. Open the link (it lands on `/hosts` behind Access), check the
 code and approve. The receipt is `~/.local/state/networth-host/enrollment.json`.
-Revoke the host on `/widgets`; enroll again on a replacement machine. The
+Revoke the host on `/hosts`; enroll again on a replacement machine. The
 `networth-host` launchd agent then long-polls the site and logs to
 `~/.local/state/networth-host/networth-host.log`. The agent finishes a run with
 `networth-host report --run-id <id> --status done|failed|canceled --summary

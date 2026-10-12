@@ -7,14 +7,14 @@ import {
 	runsDatabase
 } from '$lib/server/finance-runs';
 import {
-	widgetBody,
-	widgetFailure as fail,
-	widgetHeaders as headers,
-	widgetOwner
-} from '$lib/server/widget-http';
+	jsonBody,
+	failure as fail,
+	privateHeaders as headers,
+	accessOwner
+} from '$lib/server/http';
 
 export const GET: RequestHandler = async ({ platform, request }) => {
-	if (!widgetOwner(request)) return fail(403, 'Open finance runs from the dashboard.');
+	if (!accessOwner(request)) return fail(403, 'Open finance runs from the dashboard.');
 	const db = runsDatabase(platform);
 	if (!db) return fail(503, 'Finance runs are not configured.');
 	try {
@@ -25,9 +25,9 @@ export const GET: RequestHandler = async ({ platform, request }) => {
 };
 
 export const POST: RequestHandler = async ({ platform, request, url }) => {
-	if (!widgetOwner(request) || request.headers.get('origin') !== url.origin)
+	if (!accessOwner(request) || request.headers.get('origin') !== url.origin)
 		return fail(403, 'Start finance runs from the dashboard.');
-	const body = await widgetBody(request, 8192);
+	const body = await jsonBody(request, 8192);
 	const accountIds = parseAccountIds(body?.account_ids);
 	if (
 		!body ||
