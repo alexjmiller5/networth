@@ -24,8 +24,9 @@ export const POST: RequestHandler = async ({ platform, request }) => {
 		deadline = Date.now() + (wait as number) * 1000;
 	try {
 		for (let host = first; ;) {
-			const run = await store.claim(host.id, Date.now());
-			if (run || Date.now() >= deadline) return json({ run }, { headers });
+			const claimed = await store.claim(host.id, Date.now());
+			if (claimed || Date.now() >= deadline)
+				return json(claimed ?? { run: null, resume: false }, { headers });
 			await new Promise((resolve) => setTimeout(resolve, POLL_MS));
 			// Revocation during the hold takes effect before the next claim.
 			const again = await activeHost(platform, request);

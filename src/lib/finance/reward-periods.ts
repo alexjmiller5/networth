@@ -58,7 +58,8 @@ export interface StatementEarnings {
 	diagnostics: string[];
 }
 
-// Issuer wording for fees and interest on statement rows, which carry no bank label.
+// Issuer wording for fees and interest on statement-PDF rows, which carry no fee label
+// (their only bank label is a cash advance's section heading).
 const FEE =
 	/^(?:FOREIGN TRANSACTION FEE|(?:ATM|BANK) - TRANSACTION FEE|INTEREST CHARGE|LATE (?:PAYMENT )?FEE|ANNUAL (?:MEMBERSHIP )?FEE)/i;
 /** Rewards accrue on purchases net of refunds; payments, reward credits, fees and cash advances never earn. */
@@ -69,6 +70,7 @@ export function spendKind(row: LedgerRow): SpendKind {
 		return 'fee';
 	if (
 		row.category === 'Cash & ATM' ||
+		/Cash Advances$/.test(row.bank_category ?? '') ||
 		(row.amount < 0 && /ATM\/Cash Withdrawals/.test(row.bank_category ?? ''))
 	)
 		return 'cash_advance';

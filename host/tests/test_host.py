@@ -64,9 +64,13 @@ class FakeHerdr:
 
 
 class FakeApi:
-    def __init__(self, server_run=None):
+    def __init__(self, server_run=None, claims=()):
         self.patches = []
         self.server_run = server_run or run(status="running")
+        self.claims = list(claims)
+
+    def claim(self, wait):
+        return self.claims.pop(0)
 
     def patch(self, run_id, **fields):
         self.patches.append((run_id, fields))
@@ -74,6 +78,8 @@ class FakeApi:
         return self.server_run
 
     def get(self, run_id):
+        if self.server_run is None:
+            raise cli.ApiError(404, "Run not found.")
         return self.server_run
 
 
@@ -155,6 +161,127 @@ def test_an_agent_that_exits_without_reporting_fails_the_run(cfg):
     assert api.patches == [(RUN_ID, {"status": "failed", "summary": "The agent exited without reporting."})]
 
 
+NAME = "finance-run-1a2b3c4d"
+ALIVE = {NAME: {"tab_id": "w1:t7", "pane_id": "w1:p7", "agent": "claude"}}
+
+
+def remember(cfg, **over):
+    state = {"run_id": RUN_ID, "agent_name": NAME, "agent_kind": "claude", "tab_id": "w1:t7", "pane_id": "w1:p7"}
+    (cfg.state_dir / "active-run.json").write_text(json.dumps({**state, "tab_label": "Finance review", **over}))
+
+
+def test_persists_the_run_and_agent_before_starting_the_agent(cfg):
+    seen = []
+
+    class Recording(FakeHerdr):
+        def __call__(self, *args):
+            if args[:2] == ("agent", "start"):
+                seen.append(json.loads((cfg.state_dir / "active-run.json").read_text()))
+            return super().__call__(*args)
+
+    api = FakeApi()
+    cli.queue_report(cfg.state_dir, RUN_ID, "done", "ok")
+    host(cfg, Recording(), api).handle(run())
+    assert seen and seen[0]["run_id"] == RUN_ID and seen[0]["agent_name"] == NAME
+    assert seen[0]["tab_id"] == "w1:t1" and seen[0]["pane_id"] == "w1:p1"
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
+def test_restart_resumes_the_persisted_agent_instead_of_claiming(cfg):
+    remember(cfg)
+    herdr = FakeHerdr(agents=ALIVE)
+    api = FakeApi(run(status="running", agent_name=NAME))  # no claims: claiming would fail
+    cli.queue_report(cfg.state_dir, RUN_ID, "done", "resumed fine")
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert ("agent", "get", NAME) in herdr.calls
+    assert not any(c[:2] in {("tab", "create"), ("agent", "start"), ("agent", "prompt")} for c in herdr.calls)
+    assert api.patches == [(RUN_ID, {"status": "done", "summary": "resumed fine"})]
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
+def test_restart_cancel_reaches_the_resumed_agent(cfg):
+    remember(cfg)
+    herdr = FakeHerdr(agents=ALIVE)
+    api = FakeApi(run(status="running", agent_name=NAME, cancel_requested=True))
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    (prompt,) = herdr.prompts()
+    assert prompt[2] == NAME and "--status canceled" in prompt[3]
+    assert not any(c[:2] == ("agent", "start") for c in herdr.calls)
+
+
+def test_agent_lost_after_restart_fails_the_run_without_a_second_agent(cfg):
+    remember(cfg)
+    herdr = FakeHerdr()
+    api = FakeApi(run(status="running", agent_name=NAME))
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert api.patches == [(RUN_ID, {"status": "failed", "summary": cli.LOST})]
+    assert "agent lost after host restart" in cli.LOST.lower()
+    assert not any(c[:2] in {("tab", "create"), ("agent", "start")} for c in herdr.calls)
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
+def test_agent_lost_after_restart_with_a_cancel_pending_ends_canceled(cfg):
+    remember(cfg)
+    api = FakeApi(run(status="running", agent_name=NAME, cancel_requested=True))
+    cli.poll_once(cfg, host(cfg, FakeHerdr(), api), api)
+    assert api.patches == [(RUN_ID, {"status": "canceled", "summary": cli.LOST})]
+
+
+def test_crash_between_agent_start_and_running_report_resumes_and_reports_running(cfg):
+    remember(cfg)
+    herdr = FakeHerdr(agents=ALIVE)
+    api = FakeApi(run(status="claimed"))
+    cli.queue_report(cfg.state_dir, RUN_ID, "done", "ok")
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert api.patches[0] == (
+        RUN_ID,
+        {
+            "status": "running",
+            "agent_name": NAME,
+            "agent_kind": "claude",
+            "tab_id": "w1:t7",
+            "pane_id": "w1:p7",
+            "tab_label": "Finance review",
+        },
+    )
+    assert not any(c[:2] == ("agent", "start") for c in herdr.calls)
+
+
+def test_a_server_resume_without_local_state_never_starts_a_second_agent(cfg):
+    herdr = FakeHerdr()
+    api = FakeApi(claims=[(run(status="running", agent_name=NAME), True)])
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert api.patches == [(RUN_ID, {"status": "failed", "summary": cli.LOST})]
+    assert not any(c[:2] in {("tab", "create"), ("agent", "start")} for c in herdr.calls)
+
+
+def test_a_resumed_run_that_ended_on_the_site_is_forgotten(cfg):
+    remember(cfg)
+    api = FakeApi(run(status="canceled", agent_name=NAME))
+    herdr = FakeHerdr(agents=ALIVE)
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert api.patches == [] and herdr.calls == []
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
+def test_a_resumed_run_missing_on_the_site_is_forgotten(cfg):
+    remember(cfg)
+    api = FakeApi()
+    api.server_run = None
+    cli.poll_once(cfg, host(cfg, FakeHerdr(agents=ALIVE), api), api)
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
+def test_a_fresh_claim_launches_and_forgets_the_run_when_it_ends(cfg):
+    herdr = FakeHerdr()
+    api = FakeApi(claims=[(run(), False)])
+    cli.queue_report(cfg.state_dir, RUN_ID, "done", "ok")
+    cli.poll_once(cfg, host(cfg, herdr, api), api)
+    assert [f.get("status") for _, f in api.patches] == ["running", "done"]
+    assert sum(c[:2] == ("agent", "start") for c in herdr.calls) == 1
+    assert not (cfg.state_dir / "active-run.json").exists()
+
+
 def test_report_validates_and_flattens_input(cfg):
     path = cli.queue_report(cfg.state_dir, RUN_ID, "failed", "line one\nline two")
     assert json.loads(path.read_text()) == {"status": "failed", "summary": "line one line two"}
@@ -177,7 +304,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         Handler.seen.append((self.command, self.path, self.headers.get("Authorization"), body))
-        self.reply(200, {"run": run()})
+        self.reply(200, {"run": run(), "resume": True})
 
     def reply(self, code, body):
         data = json.dumps(body).encode()
@@ -202,7 +329,8 @@ def server():
 
 def test_api_claims_with_the_bearer_token(server):
     api = Api(server, lambda: "nw_" + "a" * 64)
-    assert api.claim(3)["id"] == RUN_ID
+    claimed, resume = api.claim(3)
+    assert claimed["id"] == RUN_ID and resume is True
     assert Handler.seen[0] == ("POST", "/api/finance-host/v1/claim", "Bearer nw_" + "a" * 64, {"wait_seconds": 3})
 
 

@@ -61,13 +61,17 @@ it('admits only an approved host', async () => {
 
 it('long-polls until a run is queued, then reports progress and completion', async () => {
 	const empty = await claim(event('POST', host, { wait_seconds: 0 }));
-	expect(await empty.json()).toEqual({ run: null });
+	expect(await empty.json()).toEqual({ run: null, resume: false });
 	setTimeout(() => void runs.create({ requestId: 'r1', accountIds: ['cash'] }, Date.now()), 200);
 	const started = Date.now();
-	const { run } = (await (await claim(event('POST', host, { wait_seconds: 5 }))).json()) as {
+	const { run, resume } = (await (
+		await claim(event('POST', host, { wait_seconds: 5 }))
+	).json()) as {
 		run: FinanceRun;
+		resume: boolean;
 	};
 	expect(run).toMatchObject({ status: 'claimed', account_ids: ['cash'] });
+	expect(resume).toBe(false);
 	expect(Date.now() - started).toBeLessThan(4000);
 	const patch = (body: unknown) => PATCH(event('PATCH', host, body, run.id));
 	expect(
@@ -83,6 +87,11 @@ it('long-polls until a run is queued, then reports progress and completion', asy
 		).json()
 	).toMatchObject({ run: { status: 'running', tab_label: 'Finance review 2026-10-08' } });
 	expect((await patch({ host_id: 'x' })).status).toBe(400);
+	// A restarted host gets the same run back as a resume, with its tab and agent.
+	expect(await (await claim(event('POST', host, { wait_seconds: 0 }))).json()).toMatchObject({
+		resume: true,
+		run: { id: run.id, status: 'running', agent_name: `finance-run-${run.id.slice(0, 8)}` }
+	});
 	await runs.cancel(run.id, Date.now());
 	expect(await (await GET(event('GET', host, undefined, run.id))).json()).toMatchObject({
 		run: { cancel_requested: true, status: 'running' }

@@ -84,13 +84,14 @@ export class FinanceRuns {
 		return row ? view(row) : null;
 	}
 
-	/** The host's own unfinished run first (restart recovery), else the oldest queued run. */
-	async claim(hostId: string, now: number): Promise<FinanceRun | null> {
+	/** The host's own unfinished run first, as a resume with its tab and agent (restart
+	 * recovery), else the oldest queued run. Another host's run is never offered. */
+	async claim(hostId: string, now: number): Promise<{ run: FinanceRun; resume: boolean } | null> {
 		const own = await this.db
 			.prepare(`SELECT * FROM finance_runs WHERE host_id = ? AND status IN ('claimed','running')`)
 			.bind(hostId)
 			.first<Row>();
-		if (own) return view(own);
+		if (own) return { run: view(own), resume: true };
 		const row = await this.db
 			.prepare(
 				`UPDATE finance_runs SET status = 'claimed', host_id = ?, claimed_at = ?, updated_at = ?
@@ -99,7 +100,7 @@ export class FinanceRuns {
 			)
 			.bind(hostId, now, now)
 			.first<Row>();
-		return row ? view(row) : null;
+		return row ? { run: view(row), resume: false } : null;
 	}
 
 	/** Host reports: owner only, unfinished runs only, never back to running once finished. */

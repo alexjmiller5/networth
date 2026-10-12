@@ -45,13 +45,25 @@ it('lets the one host claim the oldest queued run, and resumes it after a restar
 	const run = await runs.create({ requestId: 'r1', accountIds: ['cash', 'bofa-checking'] }, now);
 	const claimed = await runs.claim(hostA, now + 1);
 	expect(claimed).toMatchObject({
-		id: run.id,
-		status: 'claimed',
-		host_id: hostA,
-		claimed_at: now + 1
+		resume: false,
+		run: { id: run.id, status: 'claimed', host_id: hostA, claimed_at: now + 1 }
 	});
 	expect(await runs.claim(hostB, now + 2)).toBeNull();
-	expect(await runs.claim(hostA, now + 3)).toMatchObject({ id: run.id, claimed_at: now + 1 });
+	expect(await runs.claim(hostA, now + 3)).toMatchObject({
+		resume: true,
+		run: { id: run.id, claimed_at: now + 1 }
+	});
+	await runs.update(
+		run.id,
+		hostA,
+		{ status: 'running', tab_id: 'w1:t9', pane_id: 'w1:p9', agent_name: 'finance-run-1' },
+		now + 4
+	);
+	expect(await runs.claim(hostA, now + 5)).toMatchObject({
+		resume: true,
+		run: { id: run.id, status: 'running', tab_id: 'w1:t9', agent_name: 'finance-run-1' }
+	});
+	expect(await runs.claim(hostB, now + 6)).toBeNull();
 });
 
 it('cancels a queued run outright and flags a claimed run for the host', async () => {

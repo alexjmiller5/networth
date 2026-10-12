@@ -35,6 +35,7 @@ INSTRUCTION = (
     "`networth-host report --run-id {run_id} --status done|failed --summary '<one line>'`. "
     "Never change Notion task status."
 )
+LOST = "Agent lost after host restart or interruption; no second agent was started."
 CANCEL = (
     "The user canceled this run from the Networth site. Stop collection safely, close your "
     "browser groups, then run: networth-host report --run-id {run_id} --status canceled "
@@ -126,8 +127,8 @@ class Api:
             raise ApiError(error.code, message) from None
 
     def claim(self, wait):
-        body = {"wait_seconds": wait}
-        return self._call("POST", "/api/finance-host/v1/claim", body, timeout=wait + 20)["run"]
+        body = self._call("POST", "/api/finance-host/v1/claim", {"wait_seconds": wait}, timeout=wait + 20)
+        return body["run"], bool(body.get("resume"))
 
     def get(self, run_id):
         return self._call("GET", f"/api/finance-host/v1/runs/{run_id}")["run"]
@@ -267,20 +268,69 @@ class Host:
     def __init__(self, cfg, api, herdr, sleep=time.sleep, clock=time.monotonic):
         self.cfg, self.api, self.herdr, self.sleep, self.clock = cfg, api, herdr, sleep, clock
 
+    # One run at a time. active-run.json is written before any agent starts, so after a
+    # restart or an error the host watches that agent again and never starts a second one.
+    @property
+    def _active_path(self):
+        return Path(self.cfg.state_dir) / "active-run.json"
+
+    def active(self):
+        try:
+            return json.loads(self._active_path.read_text())
+        except FileNotFoundError:
+            return None
+
+    def remember(self, run_id, details):
+        path = self._active_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(".active-run.tmp")
+        tmp.write_text(json.dumps({"run_id": run_id, **details}))
+        os.replace(tmp, path)
+
+    def forget(self):
+        self._active_path.unlink(missing_ok=True)
+
+    def resume(self, active):
+        try:
+            run = self.api.get(active["run_id"])
+        except ApiError as error:
+            if error.status != 404:
+                raise
+            log(f"run {active['run_id']} is not on the site for this host; forgetting it")
+            return self.forget()
+        self.handle(run)
+
     def handle(self, run):
-        run_id, name = run["id"], run.get("agent_name")
-        if run["cancel_requested"] and not name:
+        self._handle(run)
+        self.forget()  # only once the run ended; an exception keeps the record for the next loop
+
+    def _handle(self, run):
+        run_id, active = run["id"], self.active()
+        if run["status"] not in ACTIVE:  # ended on the site while the host was away
+            self.deliver(run_id)
+            return
+        local = active if active and active["run_id"] == run_id else None
+        name = (local or {}).get("agent_name") or run.get("agent_name")
+        if name:  # an agent was started for this run: reattach or give up, never relaunch
+            if not self.alive(name):
+                if not self.deliver(run_id):
+                    status = "canceled" if run["cancel_requested"] else "failed"
+                    self.api.patch(run_id, status=status, summary=LOST)
+                return
+            if run["status"] == "claimed" and local:  # restarted before reporting running
+                self.api.patch(run_id, status="running", **{k: v for k, v in local.items() if k != "run_id"})
+            self.watch(run_id, name)
+            return
+        if run["cancel_requested"]:
             self.api.patch(run_id, status="canceled", summary="Canceled before the agent started.")
             return
-        if not name:
-            try:
-                details = self.launch(run)
-            except HerdrError as error:
-                self.api.patch(run_id, status="failed", summary=f"Could not start an agent: {error}"[:1000])
-                return
-            self.api.patch(run_id, status="running", **details)
-            name = details["agent_name"]
-        self.watch(run_id, name)
+        try:
+            details = self.launch(run)
+        except HerdrError as error:
+            self.api.patch(run_id, status="failed", summary=f"Could not start an agent: {error}"[:1000])
+            return
+        self.api.patch(run_id, status="running", **details)
+        self.watch(run_id, details["agent_name"])
 
     def launch(self, run):
         name = "finance-run-" + run["id"][:8]
@@ -289,7 +339,9 @@ class Host:
             # Restarted after launching but before reporting: adopt, never launch twice.
             tab = self.herdr("tab", "get", agent["tab_id"]).get("result", {}).get("tab", {})
             label = tab.get("label") or self.label()
-            return self.details(name, agent["agent"], agent["tab_id"], agent["pane_id"], label)
+            details = self.details(name, agent["agent"], agent["tab_id"], agent["pane_id"], label)
+            self.remember(run["id"], details)
+            return details
         except HerdrError as error:
             if error.code != "agent_not_found":
                 raise
@@ -299,6 +351,8 @@ class Host:
         for kind in ("claude", "codex"):
             created = self.herdr("tab", "create", *workspace, "--cwd", str(Path.home()), "--label", label, "--no-focus")
             tab_id, pane = created["result"]["tab"]["tab_id"], created["result"]["root_pane"]["pane_id"]
+            details = self.details(name, kind, tab_id, pane, label)
+            self.remember(run["id"], details)
             try:
                 self.herdr("agent", "start", name, "--kind", kind, "--pane", pane, "--timeout", "60000")
                 self.herdr("agent", "wait", name, "--until", "idle", "--timeout", "60000")
@@ -307,7 +361,7 @@ class Host:
                     self.sleep(20)
                     if UNAVAILABLE.search(self.herdr("agent", "read", name, "--source", "visible")):
                         raise HerdrError("unavailable", "claude reports no usage left")
-                return self.details(name, kind, tab_id, pane, label)
+                return details
             except HerdrError as error:
                 log(f"{kind} could not take run {run['id']}: {error}")
                 if kind == "codex":
@@ -379,6 +433,21 @@ class Host:
             self.sleep(self.cfg.watch_seconds)
 
 
+def poll_once(cfg, host, api):
+    if active := host.active():
+        log(f"resuming run {active['run_id']} with agent {active['agent_name']} (from the state dir, no claim)")
+        host.resume(active)
+        log(f"run {active['run_id']} handled")
+        return True
+    run, resume = api.claim(cfg.poll_seconds)
+    if run:
+        verb = "resuming its claimed" if resume else "claimed"
+        log(f"{verb} run {run['id']} for {', '.join(run['account_ids'])}")
+        host.handle(run)
+        log(f"run {run['id']} handled")
+    return bool(run)
+
+
 def serve(cfg):
     api = Api(cfg.url, token_source(cfg))
     host, delay = Host(cfg, api, Herdr(cfg)), 5
@@ -386,13 +455,9 @@ def serve(cfg):
     while True:
         started = time.monotonic()
         try:
-            run = api.claim(cfg.poll_seconds)
+            busy = poll_once(cfg, host, api)
             delay = 5
-            if run:
-                log(f"claimed run {run['id']} for {', '.join(run['account_ids'])}")
-                host.handle(run)
-                log(f"run {run['id']} handled")
-            elif time.monotonic() - started < 5:
+            if not busy and time.monotonic() - started < 5:
                 time.sleep(5)
         except Exception as error:  # noqa: BLE001 - the daemon must outlive any one failure
             delay = 300 if isinstance(error, ApiError) and error.status in {401, 403} else min(delay * 2, 300)

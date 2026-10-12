@@ -53,6 +53,13 @@ describe('spendKind', () => {
 		expect(spendKind(txn({ bank_category: 'Cash, Checks & Misc: ATM/Cash Withdrawals' }))).toBe(
 			'cash_advance'
 		);
+		// A statement row's label is its section heading; it outranks the owner's spending category.
+		expect(spendKind(txn({ bank_category: 'Bank Cash Advances', category: 'Dining' }))).toBe(
+			'cash_advance'
+		);
+		expect(spendKind(txn({ amount: 20, bank_category: 'Bank Cash Advances' }))).toBe(
+			'cash_advance'
+		);
 		expect(spendKind(txn({ amount: 12, category: 'Dining' }))).toBe('refund');
 	});
 });

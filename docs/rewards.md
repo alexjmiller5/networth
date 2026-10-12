@@ -37,7 +37,8 @@ device; the URL stays clean.
   closing in the twelve months up to the latest one ("as of" that closing date).
   Purchases are posted card rows by posting date, refunds netted; payments (internal),
   reward credits (Cashback/Transfer), fees and interest (bank label or issuer fee
-  wording) and cash advances (Cash & ATM, ATM/Cash Withdrawals) never count. A window
+  wording) and cash advances (Cash & ATM, ATM/Cash Withdrawals, or a statement row whose
+  bank label is its `Bank Cash Advances` section, whatever its category) never count. A window
   with no net purchases has no rate and is left out of the trailing rate, never zero.
   Purchases outside every recorded statement are listed as diagnostics. Category
   rates need an earning term naming the category; none exist, so cards show the
