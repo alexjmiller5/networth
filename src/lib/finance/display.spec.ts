@@ -19,6 +19,18 @@ describe('local amount concealment', () => {
 		expect(formatMoney(1234.56, false)).toBe('$1,234.56');
 		expect(formatMoney(-0, false)).toBe('$0.00');
 		expect(formatMoneyTick(1234, false)).toBe('$1.2k');
+	});
+	it('keeps axis ticks compact, with the sign before the dollar sign', () => {
+		for (const [value, tick] of [
+			[0, '$0'],
+			[800, '$800'],
+			[12.5, '$12.5'],
+			[2500, '$2.5k'],
+			[-250, '-$250'],
+			[-1000, '-$1k'],
+			[-20000, '-$20k']
+		] as const)
+			expect(formatMoneyTick(value, false)).toBe(tick);
 		expect(formatUnits(12345, false)).toBe('12,345');
 	});
 });

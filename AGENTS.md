@@ -45,17 +45,27 @@ protects the site and every API route.
   Only USD valuation and event chain heads count; it never moves a balance, and a
   redemption without a category is not spending. It charts as Points-paid (gift
   icon) under Wallets & rewards, and in its category when grouped by category.
-- Chart and Overview share selectors and filters. Overview uses closing
-  balances or period flow totals, with unavailable values distinct from zero.
-  Both views keep the same width and selector positions. Date controls are
-  Chart-only; their selected range persists in Overview. Open and Closed
-  are independent checkboxes; filtering must not change an entity's palette slot.
-- Balances and Activity are explicit measures. Selecting both spending and
-  income remains Activity, never implicitly switches to balance changes.
-  Internal transfers affect balances but no activity mode.
-- Cash / Investments / Deposits and Banks & cash / Wallets & rewards selections
-  apply to account series, overview totals, and coverage. Deposits count under
-  Banks & cash; saves that predate Deposits and selected every class gain it.
+- Chart and Overview share one control bar: Measure, date preset, bucket,
+  grouping, View (Bars, Area, Line, Overview), per-bucket or running total,
+  Accounts and Series. Page links and the Markers, Hide amounts and Refresh
+  actions sit in their own row above it. Both views keep the same width,
+  selector positions and date controls; bucket and running total are disabled
+  in Overview. Overview uses closing balances or period flow totals; an
+  unavailable balance stays distinct from zero, while a flow series with no
+  categorized activity in range is a dimmed $0. Filtering must not change an
+  entity's palette slot.
+- Measure is one choice (`measureOf`/`setMeasure`): Balances, Net flow (spending
+  and income together, never an implicit switch to balance changes), Spending or
+  Income. Balances cannot group by category: choosing Balances regroups by
+  account, and choosing By category from Balances returns to the saved flow
+  direction. Internal transfers affect balances but no flow.
+- Accounts is one menu of three independent multiselects (`toggleChoice`; an
+  emptied section snaps back to all): Status (Open, Closed), Asset class (Cash,
+  Investments, Deposits) and Source (Bank & investment accounts, Wallets &
+  rewards). Its trigger fills and names only the narrowed choices
+  (`accountFilter`). The selections apply to account series, overview totals,
+  and coverage. Deposits count under Bank & investment accounts; saves that
+  predate Deposits and selected every class gain it.
   Stored-value accounts belong to wallets/rewards; points snapshots appear with
   that selection, separately from dollars. Asset-class grouping uses account
   types.
@@ -137,7 +147,8 @@ protects the site and every API route.
   or whole parents. Every event needs a live `evidence_of` edge; evidence keys stay
   server-side. Assets have no coverage row: they are evidenced, not reconciled.
 - Bars are the default. Date, grouping, visible series, and chart mode must
-  agree with headline figures and survive refresh. Show every category;
+  agree with headline figures and survive refresh. Money axis ticks are compact
+  with the sign first (`-$1.5k`, `$800`). Show every category;
   never aggregate the tail into an invented Other category.
 - The amount-concealment toggle masks money, native units, chart scale labels
   and tooltip values on this device. It preserves underlying data and chart
@@ -152,12 +163,15 @@ protects the site and every API route.
   encode the owner's taxonomy or transaction data in this repository.
 - Category grouping follows the catalog tree (`categories.parent_id`, one
   parent, any depth; `categoryTree.ts`). The top level shows root categories
-  with every descendant rolled up; the breakdown lens, legend and Overview
-  chevrons and a click on a bar open a parent (persisted `categoryNode`, a
+  with every descendant rolled up; legend and Overview chevrons and a click on
+  a bar open a parent (persisted `categoryNode`, a
   catalog id; an unknown or childless node falls back to the top level), with
   Back and a breadcrumb to return. A parent's own rows chart as
   `<Name> (other)` in its parent's color. Each row keeps one category, so the
-  breakdown always sums to the parent's total.
+  breakdown always sums to the parent's total. Only categories the measure can
+  carry are listed: never transfer kinds, no income kinds under Spending, no
+  spending kinds under Income, unknown kinds always. An open category whose
+  subtree cannot carry the measure falls back to the top level.
 - Unit tests live beside the code. Endpoint tests cover credential isolation
   and malformed upstream data against `fake-hub.ts` (an in-memory hub speaking
   the cursor and pull routes); financial tests cover shares, refunds, and

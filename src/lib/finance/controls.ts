@@ -1,7 +1,22 @@
-import type { Account, AccountCoverage, AssetClass, Category, GroupBy, Txn } from './types';
+import type {
+	Account,
+	AccountCoverage,
+	AssetClass,
+	Category,
+	CategoryKind,
+	GroupBy,
+	Txn
+} from './types';
 import type { AccountValuation } from './valuation';
 import { addDays, clampRange, getPresetRange, PRESET_LABELS, type PresetLabel } from './presets';
-import { categoryTree, drillKey, levelKeys, lineage } from './categoryTree';
+import {
+	categoryTree,
+	drillKey,
+	levelKeys,
+	lineage,
+	ownerOf,
+	type CategoryTree
+} from './categoryTree';
 import {
 	accumulate,
 	accountGroup,
@@ -21,6 +36,21 @@ export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export const REWARDS_PAID = 'rewards-paid';
 export const ASSET_CLASSES: AssetClass[] = ['cash', 'investments', 'deposits'];
+export const ACCOUNT_STATUSES = ['open', 'closed'] as const;
+export const BALANCE_SOURCES = ['accounts', 'rewards'] as const;
+/** The dashboard's one vocabulary for account filters, shared by menus and summaries. */
+export const STATUS_LABELS = { open: 'Open', closed: 'Closed' } as const;
+export const CLASS_LABELS: Record<AssetClass, string> = {
+	cash: 'Cash',
+	investments: 'Investments',
+	deposits: 'Deposits'
+};
+export const SOURCE_LABELS = {
+	accounts: 'Bank & investment accounts',
+	rewards: 'Wallets & rewards'
+} as const;
+/** One measure choice: balances, or a flow direction (net = spending and income). */
+export type Measure = 'balances' | 'net' | 'spending' | 'income';
 export interface Controls {
 	hideAmounts: boolean;
 	presentation: 'chart' | 'overview';
@@ -160,6 +190,69 @@ export function writeControls(
 	}
 }
 
+/** Toggle one choice of a multiselect, kept in canonical order; an empty selection means all. */
+export function toggleChoice<T>(selected: readonly T[], item: T, all: readonly T[]): T[] {
+	const next = all.filter((a) => (a === item ? !selected.includes(a) : selected.includes(a)));
+	return next.length ? next : [...all];
+}
+
+export function measureOf(state: Pick<Controls, 'measure' | 'flows'>): Measure {
+	if (state.measure === 'balances') return 'balances';
+	return state.flows.length === 1 ? state.flows[0] : 'net';
+}
+
+/** The control changes one measure choice makes; balances cannot group by category. */
+export function setMeasure(
+	state: Pick<Controls, 'groupBy'>,
+	measure: Measure
+): Partial<Pick<Controls, 'measure' | 'flows' | 'groupBy'>> {
+	if (measure === 'balances')
+		return state.groupBy === 'category'
+			? { measure: 'balances', groupBy: 'account' }
+			: { measure: 'balances' };
+	return {
+		measure: 'activity',
+		flows: measure === 'net' ? ['spending', 'income'] : [measure]
+	};
+}
+
+/** Names for the per-bucket and running-total choices: levels change, flows add up. */
+export function totalLabels(isFlow: boolean, bucket: Bucket) {
+	return isFlow
+		? { bucket: `Per ${bucket}`, cumulative: 'Running total' }
+		: { bucket: `Change per ${bucket}`, cumulative: 'Closing balance' };
+}
+
+/** Trigger summary for the account filter: only the narrowed choices are named. */
+export function accountFilter(
+	state: Pick<Controls, 'accountStatuses' | 'assetClassFilter' | 'balanceSources'>
+) {
+	const parts: string[] = [];
+	if (state.accountStatuses.length < ACCOUNT_STATUSES.length)
+		parts.push(STATUS_LABELS[state.accountStatuses[0]]);
+	if (state.assetClassFilter.length < ASSET_CLASSES.length)
+		parts.push(
+			state.assetClassFilter
+				.map((c, i) => (i ? CLASS_LABELS[c].toLowerCase() : CLASS_LABELS[c]))
+				.join(' & ')
+		);
+	if (state.balanceSources.length < BALANCE_SOURCES.length)
+		parts.push(SOURCE_LABELS[state.balanceSources[0]]);
+	return { label: parts.length ? parts.join(' · ') : 'All accounts', narrowed: parts.length > 0 };
+}
+
+/** Whether any category in `id`'s subtree can carry the flow (transfers never do). */
+function carries(tree: CategoryTree, id: string, kinds: Set<CategoryKind>): boolean {
+	const seen = new Set<string>();
+	const walk = (c: Category): boolean => {
+		if (seen.has(c.id)) return false;
+		seen.add(c.id);
+		return kinds.has(c.kind) || (tree.children.get(c.id) ?? []).some(walk);
+	};
+	const category = tree.byId.get(id);
+	return !!category && walk(category);
+}
+
 export function toggleHidden(
 	hidden: Controls['hidden'],
 	group: GroupBy,
@@ -204,8 +297,16 @@ export function buildView(
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
 	// Grouped by category, rows roll up to the open node's children (top level: roots).
 	const tree = categoryTree(categories);
+	// Only categories whose kind the selected flow can carry are listed or opened.
+	const kinds = new Set<CategoryKind>(
+		mode === 'signed' ? ['spending', 'income', 'unknown'] : [mode, 'unknown']
+	);
 	const node =
-		groupBy === 'category' && tree.children.has(state.categoryNode) ? state.categoryNode : '';
+		groupBy === 'category' &&
+		tree.children.has(state.categoryNode) &&
+		carries(tree, state.categoryNode, kinds)
+			? state.categoryNode
+			: '';
 	const path = node ? lineage(tree, node) : [];
 	const keyOf = (t: Txn) => {
 		if (groupBy === 'category') return t.category && drillKey(tree, node, t.category);
@@ -253,7 +354,11 @@ export function buildView(
 					tree,
 					node,
 					new Set(flowPieces(txns).flatMap((t) => (t.category ? [t.category] : [])))
-				)
+				).filter((k) => {
+					// A parent's own key holds only its own rows, so only its own kind counts.
+					const c = tree.byName.get(ownerOf(k))!;
+					return k === c.name ? carries(tree, c.id, kinds) : kinds.has(c.kind);
+				})
 			: [
 					...new Set(
 						[...accounts]

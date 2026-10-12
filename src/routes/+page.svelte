@@ -22,6 +22,7 @@
 	import IconChartAreaFilled from '@tabler/icons-svelte/icons/chart-area-filled';
 	import IconChartBar from '@tabler/icons-svelte/icons/chart-bar';
 	import IconChartLine from '@tabler/icons-svelte/icons/chart-line';
+	import IconLayoutGrid from '@tabler/icons-svelte/icons/layout-grid';
 	import IconFilter from '@tabler/icons-svelte/icons/filter';
 	import IconChevronDown from '@tabler/icons-svelte/icons/chevron-down';
 	import IconArrowsDownUp from '@tabler/icons-svelte/icons/arrows-down-up';
@@ -35,12 +36,12 @@
 	import IconCash from '@tabler/icons-svelte/icons/cash';
 	import IconChartPie from '@tabler/icons-svelte/icons/chart-pie';
 	import IconGift from '@tabler/icons-svelte/icons/gift';
-	import IconActivity from '@tabler/icons-svelte/icons/activity';
+	import IconReceipt from '@tabler/icons-svelte/icons/receipt';
+	import IconCoin from '@tabler/icons-svelte/icons/coin';
 	import IconLockDollar from '@tabler/icons-svelte/icons/lock-dollar';
-	import IconHierarchy2 from '@tabler/icons-svelte/icons/hierarchy-2';
 	import IconChevronRight from '@tabler/icons-svelte/icons/chevron-right';
 	import IconArrowLeft from '@tabler/icons-svelte/icons/arrow-left';
-	import { categoryTree, lineage, ownerOf } from '$lib/finance/categoryTree';
+	import { ownerOf } from '$lib/finance/categoryTree';
 	import {
 		PRESET_LABELS,
 		clampRange,
@@ -49,16 +50,28 @@
 		type PresetLabel
 	} from '$lib/finance/presets';
 	import {
+		ACCOUNT_STATUSES,
+		accountFilter,
 		accountLabel,
 		ASSET_CLASSES,
+		BALANCE_SOURCES,
 		buildView,
+		CLASS_LABELS,
 		clearControlParams,
 		FRIEND_PAID,
+		measureOf,
 		REWARDS_PAID,
 		pointsAt,
 		readControls,
+		setMeasure,
+		SOURCE_LABELS,
+		STATUS_LABELS,
+		toggleChoice,
 		toggleHidden,
-		writeControls
+		totalLabels,
+		writeControls,
+		type Controls,
+		type Measure
 	} from '$lib/finance/controls';
 	import { accountGroup, type Bucket } from '$lib/finance/series';
 	import type { Account, AssetClass, GroupBy, AccountCoverage } from '$lib/finance/types';
@@ -154,26 +167,34 @@
 					.map((c) => c.name)
 			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets), REWARDS_PAID])]
 	);
-	// Every category with a breakdown, labelled with its full path for the drill lens.
-	const TOP = '__top__';
-	const parents = $derived.by(() => {
-		const tree = categoryTree(categories);
-		return categories
-			.filter((c) => tree.children.has(c.id))
-			.map((c) => ({
-				id: c.id,
-				label: lineage(tree, c.id)
-					.map((x) => x.name)
-					.join(' › ')
-			}))
-			.sort((a, b) => a.label.localeCompare(b.label));
-	});
 	const drillPath = $derived(view.drill.path);
 	function drill(name: string): void {
 		const category = categories.find((c) => c.name === name);
 		if (category) controls.categoryNode = category.id;
 	}
-	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
+	const measure = $derived(measureOf(controls));
+	const totals = $derived(totalLabels(view.isFlow, controls.bucket));
+	const accountsFilter = $derived(accountFilter(controls));
+	const MEASURES = [
+		{ value: 'balances', label: 'Balances', icon: IconWallet },
+		{ value: 'net', label: 'Net flow', icon: IconArrowsDownUp },
+		{ value: 'spending', label: 'Spending', icon: IconReceipt },
+		{ value: 'income', label: 'Income', icon: IconCoin }
+	] as const;
+	const VIEWS = [
+		{ value: 'bar', label: 'Bars', icon: IconChartBar },
+		{ value: 'area', label: 'Area', icon: IconChartAreaFilled },
+		{ value: 'line', label: 'Line', icon: IconChartLine },
+		{ value: 'overview', label: 'Overview', icon: IconLayoutGrid }
+	] as const;
+	const BUCKETS: Record<Bucket, string> = { day: 'Daily', week: 'Weekly', month: 'Monthly' };
+	const GROUP_LABELS: Record<GroupBy, string> = {
+		account: 'By account',
+		bank: 'By bank',
+		type: 'By type',
+		asset: 'By asset class',
+		category: 'By category'
+	};
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
 	let search = $state('');
 	const filterKeys = $derived(
@@ -186,7 +207,7 @@
 	const typeLabels: Record<string, string> = {
 		checking: 'Checking',
 		savings: 'Savings',
-		credit_card: 'Credit Cards',
+		credit_card: 'Credit cards',
 		p2p: 'P2P',
 		brokerage: 'Brokerage',
 		ira: 'IRA',
@@ -195,15 +216,10 @@
 		stored_value: 'Stored value',
 		security_deposit: 'Security deposits'
 	};
-	const classLabels: Record<AssetClass, string> = {
-		cash: 'Cash',
-		investments: 'Investments',
-		deposits: 'Deposits'
-	};
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
 		if (key === REWARDS_PAID) return 'Points-paid';
-		if (groupBy === 'asset') return classLabels[key as AssetClass] ?? key;
+		if (groupBy === 'asset') return CLASS_LABELS[key as AssetClass] ?? key;
 		start = start < viewState.dateStart ? viewState.dateStart : start;
 		end = end > viewState.dateEnd ? viewState.dateEnd : end;
 		const account = accounts.find((a) => a.id === key);
@@ -312,7 +328,7 @@
 			<h1 class="text-lg font-semibold tracking-tight">networth</h1>
 			<p class="text-sm text-muted-foreground">Money over time, across every account</p>
 		</div>
-		<div class="text-right">
+		<div class="sm:text-right">
 			<div
 				class="text-2xl font-semibold tabular-nums"
 				title={view.isFlow
@@ -323,7 +339,7 @@
 					? 'Unavailable'
 					: money(view.total)}
 			</div>
-			<div class="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
+			<div class="flex items-center gap-1.5 text-xs text-muted-foreground sm:justify-end">
 				{view.title}
 				{view.cumulative && !view.isFlow
 					? `as of ${viewState.dateEnd}`
@@ -336,175 +352,85 @@
 			<a href="/?online=1" data-sveltekit-reload class="underline">Reconnect</a>
 		</p>{/if}
 
-	<div class="flex flex-wrap items-center gap-2">
-		<Button href="/rewards" variant="outline" class="min-h-9">Rewards</Button>
-		<Button href="/investments" variant="outline" class="min-h-9">Investments</Button>
-		<Button href="/benefits" variant="outline" class="min-h-9"
-			><IconHeartHandshake size={16} />Benefits</Button
-		>
-		<Button
-			variant="outline"
-			class="min-h-9"
-			disabled={controls.hideAmounts || !markersLoaded}
-			title={controls.hideAmounts
-				? 'Show amounts to edit marker text'
-				: 'Add or edit event markers'}
-			onclick={() => (markersOpen = true)}><IconFlag size={16} />Markers</Button
-		>
-		<Button
-			variant="outline"
-			class="min-h-9"
-			aria-pressed={controls.hideAmounts}
-			title="Conceal amounts on this device; account names and chart shapes stay visible"
-			onclick={() => (controls.hideAmounts = !controls.hideAmounts)}
-		>
-			{#if controls.hideAmounts}<IconEye size={16} />Show amounts{:else}<IconEyeOff size={16} />Hide
-				amounts{/if}
-		</Button>
-		<Select.Root
-			type="single"
-			value={controls.presentation}
-			onValueChange={(v) => (controls.presentation = v as 'chart' | 'overview')}
-		>
-			<Select.Trigger class="min-h-9 w-32" aria-label="View">
-				{#if controls.presentation === 'chart'}<IconChartBar size={16} />Chart{:else}<IconWallet
-						size={16}
-					/>Overview{/if}
-			</Select.Trigger>
-			<Select.Content
-				><Select.Item value="chart" label="Chart" /><Select.Item
-					value="overview"
-					label="Overview"
-				/></Select.Content
+	<div class="flex flex-wrap items-center justify-between gap-2">
+		<nav aria-label="Pages" class="flex flex-wrap gap-1">
+			<Button href="/rewards" variant="ghost" class="min-h-9"><IconGift size={16} />Rewards</Button>
+			<Button href="/investments" variant="ghost" class="min-h-9"
+				><IconChartLine size={16} />Investments</Button
 			>
-		</Select.Root>
+			<Button href="/benefits" variant="ghost" class="min-h-9"
+				><IconHeartHandshake size={16} />Benefits</Button
+			>
+		</nav>
+		<div class="flex flex-wrap gap-2">
+			<Button
+				variant="outline"
+				class="min-h-9"
+				disabled={controls.hideAmounts || !markersLoaded}
+				title={controls.hideAmounts
+					? 'Show amounts to edit marker text'
+					: 'Add or edit event markers'}
+				onclick={() => (markersOpen = true)}><IconFlag size={16} />Markers</Button
+			>
+			<Button
+				variant="outline"
+				class="min-h-9"
+				aria-pressed={controls.hideAmounts}
+				title="Conceal amounts on this device; account names and chart shapes stay visible"
+				onclick={() => (controls.hideAmounts = !controls.hideAmounts)}
+			>
+				{#if controls.hideAmounts}<IconEye size={16} />Show amounts{:else}<IconEyeOff
+						size={16}
+					/>Hide amounts{/if}
+			</Button>
+			<Button
+				variant="outline"
+				class="min-h-9"
+				title="Reload the latest data from the hub; this does not start a bank sync"
+				onclick={refresh}
+				disabled={refreshing}
+				><IconRefresh size={16} class={refreshing ? 'animate-spin' : ''} />{refreshing
+					? 'Refreshing'
+					: 'Refresh'}</Button
+			>
+		</div>
+	</div>
+	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
+
+	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Chart controls">
 		<Select.Root
 			type="single"
-			value={controls.measure}
-			onValueChange={(v) => {
-				controls.measure = v as 'balances' | 'activity';
-				if (v === 'balances' && controls.groupBy === 'category') controls.groupBy = 'account';
-			}}
+			value={measure}
+			onValueChange={(v) => Object.assign(controls, setMeasure(controls, v as Measure))}
 		>
-			<Select.Trigger class="min-h-9 w-36" aria-label="Measure">
-				{#if controls.measure === 'balances'}<IconWallet size={16} />Balances{:else}<IconActivity
-						size={16}
-					/>Activity{/if}
+			<Select.Trigger class="min-h-9" aria-label="Measure">
+				{@const M = MEASURES.find((m) => m.value === measure) ?? MEASURES[0]}
+				<M.icon size={16} class="text-muted-foreground" />{M.label}
 			</Select.Trigger>
 			<Select.Content>
-				<Select.Item value="balances" label="Balances" />
-				<Select.Item value="activity" label="Activity" />
+				{#each MEASURES as m (m.value)}
+					<Select.Item value={m.value} label={m.label}
+						><m.icon size={16} class="text-muted-foreground" />{m.label}</Select.Item
+					>
+				{/each}
 			</Select.Content>
 		</Select.Root>
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="outline"
-						size="sm"
-						class="min-h-9 font-normal"
-						aria-label="Account status"
-					>
-						<IconBuildingBank size={16} />
-						{controls.accountStatuses.length === 2
-							? 'Open & closed'
-							: controls.accountStatuses[0] === 'open'
-								? 'Open accounts'
-								: 'Closed accounts'}
-						<IconChevronDown size={16} class="text-muted-foreground" />
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content>
-				{#each ['open', 'closed'] as const as status (status)}
-					<DropdownMenu.CheckboxItem
-						checked={controls.accountStatuses.includes(status)}
-						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							const next = checked
-								? [...controls.accountStatuses, status]
-								: controls.accountStatuses.filter((s) => s !== status);
-							controls.accountStatuses = next.length ? next : ['open', 'closed'];
-						}}>{status === 'open' ? 'Open' : 'Closed'}</DropdownMenu.CheckboxItem
-					>
-				{/each}
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
 
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="outline"
-						size="sm"
-						class="min-h-9 w-52 justify-between font-normal"
-						aria-label="Asset classes"
-					>
-						<IconChartPie size={16} />{controls.assetClassFilter.length === ASSET_CLASSES.length
-							? 'All asset classes'
-							: controls.assetClassFilter
-									.map((c, i) => (i ? classLabels[c].toLowerCase() : classLabels[c]))
-									.join(' & ')}<IconChevronDown size={16} />
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content>
-				{#each ASSET_CLASSES as asset (asset)}
-					<DropdownMenu.CheckboxItem
-						checked={controls.assetClassFilter.includes(asset)}
-						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							const next = checked
-								? ASSET_CLASSES.filter((a) => a === asset || controls.assetClassFilter.includes(a))
-								: controls.assetClassFilter.filter((a) => a !== asset);
-							controls.assetClassFilter = next.length ? next : [...ASSET_CLASSES];
-						}}>{classLabels[asset]}</DropdownMenu.CheckboxItem
-					>
+		<Select.Root
+			type="single"
+			value={controls.activePreset}
+			onValueChange={(v) => (controls.activePreset = v as PresetLabel)}
+		>
+			<Select.Trigger class="min-h-9" aria-label="Date range">
+				<IconCalendarWeek size={16} class="text-muted-foreground" />
+				{controls.activePreset === '' ? 'Custom' : controls.activePreset}
+			</Select.Trigger>
+			<Select.Content>
+				{#each PRESET_LABELS as label (label)}
+					<Select.Item value={label} {label} />
 				{/each}
-				<p class="max-w-64 px-2 py-1 text-xs text-muted-foreground">
-					Cash includes balances outside investment accounts, net of credit-card debt. Deposits are
-					refundable principal someone else holds; they count in net worth but are not spendable.
-				</p>
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Button
-						{...props}
-						variant="outline"
-						size="sm"
-						class="min-h-9 w-48 justify-between font-normal"
-						aria-label="Balance sources"
-					>
-						<IconGift size={16} />{controls.balanceSources.length === 2
-							? 'All balances'
-							: controls.balanceSources[0] === 'accounts'
-								? 'Banks & cash'
-								: 'Wallets & rewards'}<IconChevronDown size={16} />
-					</Button>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content>
-				{#each ['accounts', 'rewards'] as const as source (source)}
-					<DropdownMenu.CheckboxItem
-						checked={controls.balanceSources.includes(source)}
-						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							const next = checked
-								? [...controls.balanceSources, source]
-								: controls.balanceSources.filter((s) => s !== source);
-							controls.balanceSources = next.length ? next : ['accounts', 'rewards'];
-						}}
-						>{source === 'accounts'
-							? 'Banks & cash'
-							: 'Wallets, gift cards & rewards'}</DropdownMenu.CheckboxItem
-					>
-				{/each}
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
+			</Select.Content>
+		</Select.Root>
 
 		<Select.Root
 			type="single"
@@ -512,14 +438,14 @@
 			value={controls.bucket}
 			onValueChange={(v) => (controls.bucket = v as Bucket)}
 		>
-			<Select.Trigger class="min-h-9">
+			<Select.Trigger class="min-h-9" aria-label="Bucket">
 				<IconCalendarStats size={16} class="text-muted-foreground" />
-				{controls.bucket === 'day' ? 'Daily' : controls.bucket === 'week' ? 'Weekly' : 'Monthly'}
+				{BUCKETS[controls.bucket]}
 			</Select.Trigger>
 			<Select.Content>
-				<Select.Item value="day" label="Daily" />
-				<Select.Item value="week" label="Weekly" />
-				<Select.Item value="month" label="Monthly" />
+				{#each Object.entries(BUCKETS) as [value, label] (value)}
+					<Select.Item {value} {label} />
+				{/each}
 			</Select.Content>
 		</Select.Root>
 
@@ -528,48 +454,42 @@
 			value={groupBy}
 			onValueChange={(v) => {
 				controls.groupBy = v as GroupBy;
+				// Categories group flows only: balances have no category.
 				if (v === 'category') controls.measure = 'activity';
 			}}
 		>
-			<Select.Trigger class="min-h-9">
+			<Select.Trigger class="min-h-9" aria-label="Group by">
 				<IconStack2 size={16} class="text-muted-foreground" />
-				{groupBy === 'account'
-					? 'By account'
-					: groupBy === 'bank'
-						? 'By bank'
-						: groupBy === 'type'
-							? 'By type'
-							: groupBy === 'asset'
-								? 'By asset class'
-								: 'By category'}
+				{GROUP_LABELS[groupBy]}
 			</Select.Trigger>
 			<Select.Content>
-				<Select.Item value="account" label="By account" />
-				<Select.Item value="bank" label="By bank" />
-				<Select.Item value="type" label="By type" />
-				<Select.Item value="asset" label="By asset class" />
-				<Select.Item value="category" label="By category" />
+				{#each Object.entries(GROUP_LABELS) as [value, label] (value)}
+					<Select.Item {value} {label} />
+				{/each}
 			</Select.Content>
 		</Select.Root>
 
 		<Select.Root
 			type="single"
-			disabled={groupBy !== 'category' || !parents.length}
-			value={drillPath.at(-1)?.id ?? TOP}
-			onValueChange={(v) => (controls.categoryNode = v === TOP ? '' : v)}
+			value={controls.presentation === 'overview' ? 'overview' : controls.kind}
+			onValueChange={(v) => {
+				controls.presentation = v === 'overview' ? 'overview' : 'chart';
+				if (v !== 'overview') controls.kind = v as Controls['kind'];
+			}}
 		>
-			<Select.Trigger
-				class="min-h-9 max-w-64"
-				aria-label="Category breakdown"
-				title="Show one category's breakdown"
-			>
-				<IconHierarchy2 size={16} class="text-muted-foreground" />
-				<span class="truncate">{drillPath.at(-1)?.name ?? 'All categories'}</span>
+			<Select.Trigger class="min-h-9" aria-label="View">
+				{@const V =
+					VIEWS.find(
+						(x) => x.value === (controls.presentation === 'overview' ? 'overview' : controls.kind)
+					) ?? VIEWS[0]}
+				<V.icon size={16} class="text-muted-foreground" />{V.label}
 			</Select.Trigger>
-			<Select.Content class="max-h-96">
-				<Select.Item value={TOP} label="All categories" />
-				{#each parents as parent (parent.id)}
-					<Select.Item value={parent.id} label={parent.label} />
+			<Select.Content>
+				{#each VIEWS as v (v.value)}
+					{#if v.value === 'overview'}<Select.Separator />{/if}
+					<Select.Item value={v.value} label={v.label}
+						><v.icon size={16} class="text-muted-foreground" />{v.label}</Select.Item
+					>
 				{/each}
 			</Select.Content>
 		</Select.Root>
@@ -577,24 +497,16 @@
 		<Select.Root
 			type="single"
 			disabled={controls.presentation === 'overview'}
-			value={controls.kind}
-			onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
+			value={view.cumulative ? 'cumulative' : 'bucket'}
+			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
 		>
-			<Select.Trigger class="min-h-9">
-				{#if controls.kind === 'area'}
-					<IconChartAreaFilled size={16} class="text-muted-foreground" />
-					Area
-				{:else if controls.kind === 'line'}
-					<IconChartLine size={16} class="text-muted-foreground" /> Line
-				{:else}
-					<IconChartBar size={16} class="text-muted-foreground" />
-					Bars
-				{/if}
+			<Select.Trigger class="min-h-9" aria-label="Per bucket or running total">
+				<IconSum size={16} class="text-muted-foreground" />
+				{view.cumulative ? totals.cumulative : totals.bucket}
 			</Select.Trigger>
 			<Select.Content>
-				<Select.Item value="area" label="Area" />
-				<Select.Item value="bar" label="Bars" />
-				<Select.Item value="line" label="Line" />
+				<Select.Item value="bucket" label={totals.bucket} />
+				<Select.Item value="cumulative" label={totals.cumulative} />
 			</Select.Content>
 		</Select.Root>
 
@@ -603,59 +515,83 @@
 				{#snippet child({ props })}
 					<Button
 						{...props}
-						disabled={controls.measure === 'balances'}
-						aria-label="Activity direction"
-						variant={flowMode === 'both' ? 'outline' : 'default'}
+						variant={accountsFilter.narrowed ? 'default' : 'outline'}
 						size="sm"
-						class="min-h-9 font-normal"
+						class="min-h-9 max-w-72 font-normal"
+						aria-label={`Accounts: ${accountsFilter.label}`}
+						title={accountsFilter.label}
 					>
-						<IconArrowsDownUp
+						<IconBuildingBank
 							size={16}
-							class={flowMode === 'both' ? 'text-muted-foreground' : ''}
+							class={accountsFilter.narrowed ? '' : 'text-muted-foreground'}
 						/>
-						{flowMode === 'both'
-							? 'Spending & Income'
-							: flowMode === 'spending'
-								? 'Spending'
-								: 'Income'}
-						<IconChevronDown size={16} class={flowMode === 'both' ? 'text-muted-foreground' : ''} />
+						<span class="truncate">{accountsFilter.label}</span>
+						<IconChevronDown
+							size={16}
+							class={accountsFilter.narrowed ? '' : 'text-muted-foreground'}
+						/>
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="w-44">
-				{#each ['spending', 'income'] as const as dir (dir)}
+			<DropdownMenu.Content class="max-h-96 w-72 overflow-y-auto">
+				<DropdownMenu.Label>Status</DropdownMenu.Label>
+				{#each ACCOUNT_STATUSES as status (status)}
 					<DropdownMenu.CheckboxItem
-						checked={controls.flows.includes(dir)}
+						checked={controls.accountStatuses.includes(status)}
 						closeOnSelect={false}
-						onCheckedChange={(checked) => {
-							const next = checked
-								? [...controls.flows, dir]
-								: controls.flows.filter((f) => f !== dir);
-							// empty selection means nothing to plot - snap back to both
-							controls.flows = next.length === 0 ? ['spending', 'income'] : next;
-						}}
+						onCheckedChange={() =>
+							(controls.accountStatuses = toggleChoice(
+								controls.accountStatuses,
+								status,
+								ACCOUNT_STATUSES
+							))}>{STATUS_LABELS[status]}</DropdownMenu.CheckboxItem
 					>
-						{dir === 'spending' ? 'Spending' : 'Income'}
-					</DropdownMenu.CheckboxItem>
 				{/each}
+				<DropdownMenu.Separator />
+				<DropdownMenu.Label>Asset class</DropdownMenu.Label>
+				{#each ASSET_CLASSES as asset (asset)}
+					<DropdownMenu.CheckboxItem
+						checked={controls.assetClassFilter.includes(asset)}
+						closeOnSelect={false}
+						onCheckedChange={() =>
+							(controls.assetClassFilter = toggleChoice(
+								controls.assetClassFilter,
+								asset,
+								ASSET_CLASSES
+							))}>{CLASS_LABELS[asset]}</DropdownMenu.CheckboxItem
+					>
+				{/each}
+				<DropdownMenu.Separator />
+				<DropdownMenu.Label>Source</DropdownMenu.Label>
+				{#each BALANCE_SOURCES as source (source)}
+					<DropdownMenu.CheckboxItem
+						checked={controls.balanceSources.includes(source)}
+						closeOnSelect={false}
+						onCheckedChange={() =>
+							(controls.balanceSources = toggleChoice(
+								controls.balanceSources,
+								source,
+								BALANCE_SOURCES
+							))}>{SOURCE_LABELS[source]}</DropdownMenu.CheckboxItem
+					>
+				{/each}
+				{#if accountsFilter.narrowed}
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item
+						onclick={() => {
+							controls.accountStatuses = [...ACCOUNT_STATUSES];
+							controls.assetClassFilter = [...ASSET_CLASSES];
+							controls.balanceSources = [...BALANCE_SOURCES];
+						}}>Show all</DropdownMenu.Item
+					>
+				{/if}
+				<p class="px-2 py-1 text-xs text-muted-foreground">
+					Cash includes balances outside investment accounts, net of credit-card debt. Deposits are
+					refundable principal someone else holds; they count in net worth but are not spendable.
+					Wallets & rewards are stored-value balances, points-paid spending and points.
+				</p>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
-
-		<Select.Root
-			type="single"
-			disabled={controls.presentation === 'overview'}
-			value={view.cumulative ? 'cumulative' : 'bucket'}
-			onValueChange={(v) => (controls.cumulativeChoice = v === 'cumulative')}
-		>
-			<Select.Trigger class="min-h-9 w-40">
-				<IconSum size={16} class="text-muted-foreground" />
-				{view.cumulative ? 'Cumulative' : 'Per bucket'}
-			</Select.Trigger>
-			<Select.Content>
-				<Select.Item value="bucket" label="Per bucket" />
-				<Select.Item value="cumulative" label="Cumulative" />
-			</Select.Content>
-		</Select.Root>
 
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
@@ -665,10 +601,11 @@
 						variant={excluded.length ? 'default' : 'outline'}
 						size="sm"
 						class="min-h-9 font-normal"
+						aria-label="Series"
 					>
-						<IconFilter size={16} class="text-muted-foreground" />
+						<IconFilter size={16} class={excluded.length ? '' : 'text-muted-foreground'} />
 						{excluded.length === 0 ? 'All series' : `Hiding ${excluded.length}`}
-						<IconChevronDown size={16} class="text-muted-foreground" />
+						<IconChevronDown size={16} class={excluded.length ? '' : 'text-muted-foreground'} />
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>
@@ -703,56 +640,37 @@
 				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
-		{#if controls.presentation === 'chart'}
-			<Select.Root
-				type="single"
-				value={controls.activePreset}
-				onValueChange={(v) => (controls.activePreset = v as PresetLabel)}
-			>
-				<Select.Trigger class="min-h-9" aria-label="Date preset">
-					<IconCalendarWeek size={16} class="text-muted-foreground" />
-					{controls.activePreset === '' ? 'Custom' : controls.activePreset}
-				</Select.Trigger>
-				<Select.Content>
-					{#each PRESET_LABELS as label (label)}
-						<Select.Item value={label} {label} />
-					{/each}
-				</Select.Content>
-			</Select.Root>
-		{/if}
 	</div>
 
-	{#if controls.presentation === 'chart'}
-		<div class="flex flex-wrap items-center gap-2 text-xs">
-			<label class="flex items-center gap-2"
-				>From <input
-					class="min-h-9 rounded-md border bg-background px-2"
-					type="date"
-					min={minDate}
-					max={viewState.dateEnd}
-					value={viewState.dateStart}
-					onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
-				/></label
-			>
-			<label class="flex items-center gap-2"
-				>To <input
-					class="min-h-9 rounded-md border bg-background px-2"
-					type="date"
-					min={viewState.dateStart}
-					max={maxDate}
-					value={viewState.dateEnd}
-					onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
-				/></label
-			>
-		</div>
-		<RangeSlider
-			min={minDate}
-			max={maxDate}
-			start={viewState.dateStart}
-			end={viewState.dateEnd}
-			onchange={setDates}
-		/>
-	{/if}
+	<div class="flex flex-wrap items-center gap-2 text-xs">
+		<label class="flex items-center gap-2"
+			>From <input
+				class="min-h-9 rounded-md border bg-background px-2"
+				type="date"
+				min={minDate}
+				max={viewState.dateEnd}
+				value={viewState.dateStart}
+				onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
+			/></label
+		>
+		<label class="flex items-center gap-2"
+			>To <input
+				class="min-h-9 rounded-md border bg-background px-2"
+				type="date"
+				min={viewState.dateStart}
+				max={maxDate}
+				value={viewState.dateEnd}
+				onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
+			/></label
+		>
+	</div>
+	<RangeSlider
+		min={minDate}
+		max={maxDate}
+		start={viewState.dateStart}
+		end={viewState.dateEnd}
+		onchange={setDates}
+	/>
 	{#if groupBy === 'category' && drillPath.length}
 		<nav aria-label="Category breadcrumb" class="flex flex-wrap items-center gap-1 text-sm">
 			<Button
@@ -794,6 +712,7 @@
 					: undefined}
 				<article
 					class="flex min-w-0 flex-col gap-1 rounded-md border p-2"
+					class:opacity-60={row.value === null && view.isFlow}
 					title={row.value === null && !view.isFlow
 						? coverage
 							? coverageText(coverage).details
@@ -830,7 +749,7 @@
 							>{/if}
 					</div>
 					<div class="text-lg font-semibold tabular-nums">
-						{row.value === null ? 'Unavailable' : money(row.value)}
+						{row.value === null ? (view.isFlow ? money(0) : 'Unavailable') : money(row.value)}
 					</div>
 					<p class="text-xs text-muted-foreground">
 						{#if account?.closed}Closed ·
@@ -856,7 +775,7 @@
 			hideAmounts={controls.hideAmounts}
 			bucket={controls.bucket}
 			kind={controls.kind}
-			net={view.isFlow && flowMode === 'both'}
+			net={measure === 'net'}
 			{labelFor}
 			{iconFor}
 			{iconComponent}
@@ -882,21 +801,13 @@
 				: 'within these dates and account filters'}.
 		</p>
 	{/if}
-	<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-		<span
-			>{incomplete
-				? 'Incomplete coverage. Charts include verified monetary accounts and investment market values on days every holding has a current price (workplace plan NAVs carry forward between captures); gaps are unavailable, never zero.'
-				: 'Balances include verified monetary accounts and priced investment holdings.'}{assets.length
-				? ' Deposits come from evidenced principal events.'
-				: ''}</span
-		>
-		<Button variant="outline" class="min-h-9" onclick={refresh} disabled={refreshing}
-			><IconRefresh size={16} class={refreshing ? 'animate-spin' : ''} />{refreshing
-				? 'Refreshing'
-				: 'Refresh data'}</Button
-		>
-	</div>
-	{#if refreshError}<p class="text-sm text-destructive" role="alert">{refreshError}</p>{/if}
+	<p class="text-xs text-muted-foreground">
+		{incomplete
+			? 'Incomplete coverage. Charts include verified monetary accounts and investment market values on days every holding has a current price (workplace plan NAVs carry forward between captures); gaps are unavailable, never zero.'
+			: 'Balances include verified monetary accounts and priced investment holdings.'}{assets.length
+			? ' Deposits come from evidenced principal events.'
+			: ''}
+	</p>
 	<FinanceRunCard accounts={data.accounts} />
 	{#if markersError}<p class="text-sm text-destructive" role="alert">
 			{markersError}

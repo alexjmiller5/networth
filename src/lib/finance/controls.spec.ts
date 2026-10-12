@@ -1,13 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+	accountFilter,
+	ASSET_CLASSES,
 	buildView,
 	readControls,
 	writeControls,
 	clearControlParams,
+	measureOf,
+	setMeasure,
+	toggleChoice,
 	toggleHidden,
+	totalLabels,
 	pointsAt
 } from './controls';
 import { accountLabel } from './controls';
+import type { CategoryKind } from './types';
 
 it('labels a converted account by the dates shown without changing its identity', () => {
 	const a = {
@@ -848,5 +855,136 @@ describe('category drill-down', () => {
 		expect(v.keys).toEqual(['account-1']);
 		expect(v.total).toBe(2266);
 		expect(v.title).toBe('Net flow');
+	});
+});
+
+describe('consolidated controls', () => {
+	it('toggles a multi-choice in canonical order and snaps an empty selection back to all', () => {
+		expect(toggleChoice(['cash'], 'deposits', ASSET_CLASSES)).toEqual(['cash', 'deposits']);
+		expect(toggleChoice(['deposits'], 'cash', ASSET_CLASSES)).toEqual(['cash', 'deposits']);
+		expect(toggleChoice(['cash', 'investments'], 'cash', ASSET_CLASSES)).toEqual(['investments']);
+		expect(toggleChoice(['cash'], 'cash', ASSET_CLASSES)).toEqual(ASSET_CLASSES);
+	});
+
+	it('reads one measure from the saved balance/activity choice and flow directions', () => {
+		expect(measureOf(restore())).toBe('balances');
+		expect(measureOf(state({ measure: 'activity' }))).toBe('net');
+		expect(measureOf(state({ flows: ['spending'] }))).toBe('spending');
+		expect(measureOf(state({ measure: 'activity', flows: ['income'] }))).toBe('income');
+		expect(measureOf(state({ measure: 'balances', flows: ['income'] }))).toBe('balances');
+	});
+
+	it('sets a measure without touching unrelated controls, leaving category grouping for balances', () => {
+		const s = state({ groupBy: 'category', flows: ['spending'], bucket: 'week' });
+		expect(setMeasure(s, 'balances')).toEqual({ measure: 'balances', groupBy: 'account' });
+		expect(setMeasure(s, 'net')).toEqual({ measure: 'activity', flows: ['spending', 'income'] });
+		expect(setMeasure(s, 'income')).toEqual({ measure: 'activity', flows: ['income'] });
+		expect(setMeasure(state({ groupBy: 'bank' }), 'balances')).toEqual({ measure: 'balances' });
+		for (const m of ['balances', 'net', 'spending', 'income'] as const)
+			expect(measureOf({ ...s, ...setMeasure(s, m) })).toBe(m);
+	});
+
+	it('names the per-bucket and running choices for levels and for flows', () => {
+		expect(totalLabels(false, 'month')).toEqual({
+			bucket: 'Change per month',
+			cumulative: 'Closing balance'
+		});
+		expect(totalLabels(true, 'week')).toEqual({ bucket: 'Per week', cumulative: 'Running total' });
+		expect(totalLabels(true, 'day').bucket).toBe('Per day');
+	});
+
+	it('summarizes the account filter by naming only the narrowed choices', () => {
+		expect(accountFilter(restore())).toEqual({ label: 'All accounts', narrowed: false });
+		expect(accountFilter(state({ accountStatuses: ['open'] }))).toEqual({
+			label: 'Open',
+			narrowed: true
+		});
+		expect(accountFilter(state({ assetClassFilter: ['cash', 'deposits'] })).label).toBe(
+			'Cash & deposits'
+		);
+		expect(
+			accountFilter(
+				state({
+					accountStatuses: ['closed'],
+					assetClassFilter: ['investments'],
+					balanceSources: ['rewards']
+				})
+			).label
+		).toBe('Closed · Investments · Wallets & rewards');
+	});
+
+	describe('categories follow the selected flow', () => {
+		const catalog = [
+			{ id: 'food', name: 'Food', kind: 'spending' as const, icon: 'tabler:x', sort: 1 },
+			{ id: 'pay', name: 'Pay', kind: 'income' as const, icon: 'tabler:x', sort: 2 },
+			{ id: 'move', name: 'Move', kind: 'transfer' as const, icon: 'tabler:x', sort: 3 },
+			{ id: 'unsure', name: 'Unsure', kind: 'unknown' as const, icon: 'tabler:x', sort: 4 },
+			{ id: 'jobs', name: 'Jobs', kind: 'income' as const, icon: 'tabler:x', sort: 5 },
+			{
+				id: 'boss',
+				name: 'Boss',
+				kind: 'income' as const,
+				icon: 'tabler:x',
+				sort: 6,
+				parentId: 'jobs'
+			},
+			{ id: 'home', name: 'Home', kind: 'spending' as const, icon: 'tabler:x', sort: 7 },
+			{
+				id: 'sold',
+				name: 'Sold furniture',
+				kind: 'income' as const,
+				icon: 'tabler:x',
+				sort: 8,
+				parentId: 'home'
+			}
+		];
+		const view = (flows: ('spending' | 'income')[], extra: Record<string, unknown> = {}) =>
+			buildView(
+				[],
+				accounts,
+				catalog,
+				state({ groupBy: 'category', measure: 'activity', flows, ...extra })
+			);
+
+		it.each([
+			[['spending'], ['Food', 'Unsure', 'Home']],
+			[['income'], ['Pay', 'Unsure', 'Jobs', 'Home']],
+			[
+				['spending', 'income'],
+				['Food', 'Pay', 'Unsure', 'Jobs', 'Home']
+			]
+		] as const)('lists for %j only categories that can carry it', (flows, keys) => {
+			expect(view([...flows]).keys).toEqual(keys);
+			expect(view([...flows], { presentation: 'overview' }).summary.map((r) => r.key)).toEqual(
+				keys
+			);
+		});
+
+		it('opens the top level when the open category cannot carry the flow', () => {
+			expect(view(['spending'], { categoryNode: 'jobs' }).drill.path).toEqual([]);
+			expect(view(['income'], { categoryNode: 'jobs' }).keys).toEqual(['Boss']);
+			expect(view(['income'], { categoryNode: 'home' }).keys).toEqual(['Sold furniture']);
+			expect(view(['spending'], { categoryNode: 'home' }).keys).toEqual([]);
+		});
+
+		it("lists a parent's own rows only under a flow its own kind carries", () => {
+			const rows = [
+				{ account_id: 'account-1', date: min, amount: -5, category: 'Home' },
+				{ account_id: 'account-1', date: min, amount: 20, category: 'Sold furniture' }
+			].map((r) => ({
+				...r,
+				categoryKind: (r.category === 'Home' ? 'spending' : 'income') as CategoryKind
+			}));
+			const at = (flows: ('spending' | 'income')[]) =>
+				buildView(
+					rows,
+					accounts,
+					catalog,
+					state({ groupBy: 'category', flows, categoryNode: 'home' })
+				);
+			expect(at(['spending']).keys).toEqual(['Home (other)']);
+			expect(at(['income']).keys).toEqual(['Sold furniture']);
+			expect(at(['spending', 'income']).keys).toEqual(['Sold furniture', 'Home (other)']);
+		});
 	});
 });

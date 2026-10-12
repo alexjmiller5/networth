@@ -12,9 +12,12 @@ export function formatMoney(value: number, hideAmounts: boolean): string {
 }
 export function formatMoneyTick(value: number, hideAmounts: boolean): string {
 	if (hideAmounts) return '';
-	return Math.abs(value) >= 1000
-		? `$${(value / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
-		: formatMoney(value, false);
+	const abs = Math.abs(value);
+	const amount =
+		abs >= 1000
+			? `${(abs / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
+			: abs.toLocaleString('en-US', { maximumFractionDigits: 2 });
+	return `${value < 0 ? '-' : ''}$${amount}`;
 }
 export function formatUnits(value: number, hideAmounts: boolean): string {
 	return hideAmounts ? 'Hidden' : value.toLocaleString('en-US');
