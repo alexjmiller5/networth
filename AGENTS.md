@@ -483,8 +483,17 @@ deploys target his Cloudflare account.
   unchanged, and reports tab, pane, agent name and kind. It holds no collection
   logic. Its credential lives in the login Keychain (`security -A` item), read
   only by the launchd agent; agent panes cannot read the Keychain, so
-  `networth-host report` queues a file the daemon delivers. A restarted daemon
-  resumes its claimed run and adopts an existing agent instead of relaunching.
+  `networth-host report` queues a file the daemon delivers.
+- Resume contract (one agent and one bank login per run, ever): claim returns
+  `{run, resume}`; a run this host already claimed comes back with
+  `resume: true` and its tab and agent, and another host's run is never
+  offered. Before starting an agent the host writes `active-run.json` (run id,
+  tab, pane, agent name, kind) to its state dir and deletes it only when the run
+  ends. While that file exists the loop resumes it instead of claiming: after a
+  restart or any Herdr/HTTP error it checks `herdr agent get <name>` and watches
+  the same agent; if the agent is gone it delivers a queued report or marks the
+  run failed (canceled when a cancel was pending) with "Agent lost after host
+  restart", and never starts a second agent.
 - Tests: `bun run test` (stores and routes) and
   `cd host && uv run --no-project --with pytest pytest -q tests`. The nix build
   runs the host tests too.

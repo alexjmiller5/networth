@@ -272,6 +272,22 @@ def test_a_resumed_run_missing_on_the_site_is_forgotten(cfg):
     assert not (cfg.state_dir / "active-run.json").exists()
 
 
+def test_a_transient_error_keeps_the_record_so_the_next_loop_resumes(cfg):
+    remember(cfg)
+
+    class Flaky(FakeHerdr):
+        def __call__(self, *args):
+            if args[:2] == ("agent", "get") and len(self.calls) > 1:
+                raise HerdrError("failed", "Broken pipe")
+            return super().__call__(*args)
+
+    api = FakeApi(run(status="running", agent_name=NAME))
+    with pytest.raises(HerdrError):
+        cli.poll_once(cfg, host(cfg, Flaky(agents=ALIVE), api), api)
+    assert json.loads((cfg.state_dir / "active-run.json").read_text())["agent_name"] == NAME
+    assert api.patches == []
+
+
 def test_a_fresh_claim_launches_and_forgets_the_run_when_it_ends(cfg):
     herdr = FakeHerdr()
     api = FakeApi(claims=[(run(), False)])
