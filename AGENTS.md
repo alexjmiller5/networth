@@ -154,12 +154,11 @@ protects the site and every API route.
   and tooltip values on this device. It preserves underlying data and chart
   geometry; it is not a redacted sharing/export boundary. Restore it before
   rendering amounts and keep its preference local to the device.
-- The date slider uses a bounded UTC viewport of 90 calendar days (the 90D
-  preset's window) with edge panning and keyboard navigation. Earlier/Later
-  moves the viewport without changing the selected dates; the label between
-  them names the visible track, and a selected bound beyond it shows an arrow
-  beside its date and a dashed handle at the track's edge. Default to 90D only
-  when no valid preference exists.
+- The date slider is Task Burndown's two-handle range over the whole data
+  span: drag a handle, drag the filled span to slide the window, click the
+  track to jump the nearest handle; arrow/Page/Home/End keys move a focused
+  handle. Calendar math is UTC (`addDays`). Default to 90D only when no valid
+  preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
   and Screentime. Do not write filters into the URL or restore them from it.
 - Use the soma catalog for category names, kinds, icons and parents. Do not
