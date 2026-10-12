@@ -14,6 +14,10 @@ export const TXN_COLUMNS = [
 	'id',
 	'account_id',
 	'date',
+	// Posting date, bank label and name decide card reward eligibility (/api/rewards).
+	'posted_date',
+	'name',
+	'bank_category',
 	'amount',
 	'status',
 	'synthetic',
@@ -110,6 +114,9 @@ export const COLUMNS: Record<string, string[]> = {
 		'posted_date',
 		'units_delta',
 		'observed_at',
+		'period_start',
+		'period_end_exclusive',
+		'details',
 		'supersedes_id',
 		'deleted_at'
 	],

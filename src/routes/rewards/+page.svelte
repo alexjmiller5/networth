@@ -27,6 +27,11 @@
 	import IconGift from '@tabler/icons-svelte/icons/gift';
 	import IconHourglassEmpty from '@tabler/icons-svelte/icons/hourglass-empty';
 	import IconAdjustments from '@tabler/icons-svelte/icons/adjustments';
+	import IconReceipt2 from '@tabler/icons-svelte/icons/receipt-2';
+	import IconSparkles from '@tabler/icons-svelte/icons/sparkles';
+	import IconCirclePlus from '@tabler/icons-svelte/icons/circle-plus';
+	import IconPercentage from '@tabler/icons-svelte/icons/percentage';
+	import IconFileInvoice from '@tabler/icons-svelte/icons/file-invoice';
 	import { readDashboard } from '$lib/offline';
 	import { readBenefitPrivacy, writeBenefitPrivacy } from '$lib/finance/benefits';
 	import { currentBalance, sumRewardUnits, type Rewards } from '$lib/finance/rewards';
@@ -48,7 +53,14 @@
 		savedAt: string | null;
 		unavailable: boolean;
 	};
-	type Measure = 'balances' | 'activity';
+	type Measure = 'balances' | 'activity' | 'statements' | 'rate';
+	const MEASURES: Measure[] = ['balances', 'activity', 'statements', 'rate'];
+	const MEASURE_LABELS: Record<Measure, string> = {
+		balances: 'Balances',
+		activity: 'Activity',
+		statements: 'Statement earnings',
+		rate: 'Earning rate'
+	};
 	type Lens = 'units' | 'dollars';
 	let { data }: { data: View } = $props();
 	let storage: Storage | undefined;
@@ -60,7 +72,9 @@
 	const KEY = 'networth-rewards-ui';
 	const MEASURE_KEYS: Record<Measure, string[]> = {
 		balances: ['available', 'pending', 'qualifying', 'lifetime', 'earned_period'],
-		activity: ['earned', 'redeemed', 'expired', 'adjusted']
+		activity: ['earned', 'redeemed', 'expired', 'adjusted'],
+		statements: ['period_base', 'period_bonus', 'period_other'],
+		rate: ['rate']
 	};
 	const LABELS: Record<string, string> = {
 		available: 'Available',
@@ -71,7 +85,11 @@
 		earned: 'Earned',
 		redeemed: 'Redeemed',
 		expired: 'Expired',
-		adjusted: 'Adjusted'
+		adjusted: 'Adjusted',
+		period_base: 'Base',
+		period_bonus: 'Bonus',
+		period_other: 'Unsplit',
+		rate: 'Earning rate'
 	};
 	const ICONS = {
 		available: IconWallet,
@@ -82,8 +100,18 @@
 		earned: IconTrendingUp,
 		redeemed: IconGift,
 		expired: IconHourglassEmpty,
-		adjusted: IconAdjustments
+		adjusted: IconAdjustments,
+		period_base: IconReceipt2,
+		period_bonus: IconSparkles,
+		period_other: IconCirclePlus,
+		rate: IconPercentage
 	} as Record<string, typeof IconWallet>;
+	const MEASURE_ICONS: Record<Measure, typeof IconWallet> = {
+		balances: IconWallet,
+		activity: IconActivity,
+		statements: IconFileInvoice,
+		rate: IconPercentage
+	};
 
 	const units = $derived(
 		data.programs.flatMap((program) =>
@@ -134,7 +162,9 @@
 			Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : [];
 		return {
 			component: typeof saved.component === 'string' ? saved.component : null,
-			measure: saved.measure === 'activity' ? 'activity' : 'balances',
+			measure: MEASURES.includes(saved.measure as Measure)
+				? (saved.measure as Measure)
+				: 'balances',
 			lens: saved.lens === 'dollars' ? 'dollars' : 'units',
 			bucket: saved.bucket === 'day' || saved.bucket === 'month' ? saved.bucket : 'week',
 			preset:
@@ -145,7 +175,9 @@
 			end: typeof saved.end === 'string' ? saved.end : null,
 			hidden: {
 				balances: list(saved.hidden?.balances),
-				activity: list(saved.hidden?.activity)
+				activity: list(saved.hidden?.activity),
+				statements: list(saved.hidden?.statements),
+				rate: list(saved.hidden?.rate)
 			}
 		};
 	}
@@ -166,6 +198,8 @@
 	});
 
 	const selected = $derived(units.find((u) => u.key === prefs.component) ?? units[0] ?? null);
+	const statements = $derived(selected?.component.statements ?? null);
+	const hasStatements = $derived(statements?.status === 'available');
 	// A relative preset is a rule: it recomputes when new observations arrive.
 	const range = $derived(
 		prefs.preset
@@ -197,6 +231,8 @@
 	const legendKeys = $derived(
 		MEASURE_KEYS[prefs.measure].filter(
 			(key) =>
+				prefs.measure === 'statements' ||
+				prefs.measure === 'rate' ||
 				(selected?.component.role !== 'qualifying' &&
 					['available', 'pending', 'earned', 'redeemed', 'expired'].includes(key)) ||
 				selected?.component.balances.some((b) => b.basis === key) ||
@@ -218,16 +254,29 @@
 			? 'USD'
 			: (selected?.component.unit ?? '')
 	);
+	// Rates are earned units per currency unit of purchases: a percent once both sides are dollars.
+	const ratePercent = $derived(unitLabel === 'USD');
+	const rateUnit = $derived(
+		`${selected?.component.unit ?? ''} per ${selected?.component.statements?.currency ?? 'USD'}`
+	);
 	const format = (v: number) =>
-		unitLabel === 'USD'
-			? formatMoney(v, false)
-			: `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unitLabel}`;
+		prefs.measure === 'rate'
+			? ratePercent
+				? `${(v * 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%`
+				: `${v.toLocaleString('en-US', { maximumFractionDigits: 3 })} ${rateUnit}`
+			: unitLabel === 'USD'
+				? formatMoney(v, false)
+				: `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${unitLabel}`;
 	const tick = (v: number) =>
-		unitLabel === 'USD'
-			? formatMoneyTick(v, false)
-			: Math.abs(v) >= 1000
-				? `${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
-				: v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+		prefs.measure === 'rate'
+			? ratePercent
+				? `${(v * 100).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`
+				: v.toLocaleString('en-US', { maximumFractionDigits: 2 })
+			: unitLabel === 'USD'
+				? formatMoneyTick(v, false)
+				: Math.abs(v) >= 1000
+					? `${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })}k`
+					: v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 	const totalValue = $derived.by(() => {
 		const valued = units.flatMap(({ component }) => (component.dollar ? [component.dollar] : []));
@@ -267,6 +316,7 @@
 			year: 'numeric',
 			timeZone: value.length === 10 ? 'UTC' : undefined
 		});
+	const readable = (text: string) => text.replace(/\d{4}-\d\d-\d\d/g, dateLabel);
 	const daysUntil = (date: string) =>
 		Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 	function balanceText(component: (typeof units)[number]['component'], basis: string) {
@@ -283,10 +333,16 @@
 		const r = component.earningRate;
 		if (r.status !== 'available') return { value: 'Unavailable', caption: r.reason ?? '' };
 		const percent = component.currency && component.currency === r.currency;
+		const value = percent
+			? `${(Number(r.rate) * 100).toLocaleString('en-US', { maximumFractionDigits: r.basis === 'statements' ? 2 : 4 })}%`
+			: `${r.basis === 'statements' ? Number(r.rate).toLocaleString('en-US', { maximumFractionDigits: 2 }) : r.rate} ${component.unit} per ${r.currency}`;
+		if (r.basis === 'statements')
+			return {
+				value,
+				caption: `${hidden ? `${r.events} statements` : `${amount(r.earned, component.unit)} on ${usd(r.spend!)} net purchases`} · 12 months to ${dateLabel(r.asOf!)}`
+			};
 		return {
-			value: percent
-				? `${(Number(r.rate) * 100).toLocaleString('en-US', { maximumFractionDigits: 4 })}%`
-				: `${r.rate} ${component.unit} per ${r.currency}`,
+			value,
 			caption: hidden
 				? `From ${r.events} linked earning events`
 				: `${grouped(r.earned!)} ${component.unit} on ${grouped(r.spend!)} ${r.currency} linked spend`
@@ -330,6 +386,17 @@
 			},
 			{ label: 'Known redeemed', value: amount(c.redeemed, c.unit), caption: 'Posted redemptions' },
 			{ label: 'Known expired', value: amount(c.expired, c.unit), caption: 'Posted expirations' },
+			...(c.statements
+				? [
+						{
+							label: 'Earned, last 12 months',
+							value: c.statements.t12m ? amount(c.statements.t12m.earned, c.unit) : 'Unavailable',
+							caption: c.statements.t12m
+								? `${c.statements.t12m.periods} statements to ${dateLabel(c.statements.t12m.to)}`
+								: c.statements.diagnostics[0]
+						}
+					]
+				: []),
 			{ label: 'Earning rate', ...rateText(c) },
 			{ label: 'Cap headroom', ...capText(selected.program) },
 			{ label: 'Next expiry', ...expiryText(c) }
@@ -468,14 +535,15 @@
 				onValueChange={(v) => (prefs.measure = v as Measure)}
 			>
 				<Select.Trigger class="min-h-9" aria-label="Measure">
-					{#if prefs.measure === 'balances'}<IconWallet
-							size={16}
-							class="text-muted-foreground"
-						/>Balances{:else}<IconActivity size={16} class="text-muted-foreground" />Activity{/if}
+					{@const MeasureIcon = MEASURE_ICONS[prefs.measure]}
+					<MeasureIcon size={16} class="text-muted-foreground" />{MEASURE_LABELS[prefs.measure]}
 				</Select.Trigger>
 				<Select.Content>
-					<Select.Item value="balances" label="Balances" />
-					<Select.Item value="activity" label="Activity" />
+					{#each MEASURES as m (m)}<Select.Item
+							value={m}
+							label={MEASURE_LABELS[m]}
+							disabled={(m === 'statements' || m === 'rate') && !hasStatements}
+						/>{/each}
 				</Select.Content>
 			</Select.Root>
 			<Select.Root type="single" value={lens} onValueChange={(v) => (prefs.lens = v as Lens)}>
@@ -603,12 +671,38 @@
 		<section class="min-w-0 rounded-xl border bg-card p-4 sm:p-6" aria-label="Reward chart">
 			<div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
 				<h2 class="text-sm font-semibold">
-					{selected.label} · {prefs.measure === 'balances' ? 'balances' : 'posted activity'} in {unitLabel}
+					{selected.label} · {prefs.measure === 'balances'
+						? 'balances'
+						: prefs.measure === 'activity'
+							? 'posted activity'
+							: prefs.measure === 'statements'
+								? 'statement earnings'
+								: 'earning rate'} in {prefs.measure === 'rate'
+						? ratePercent
+							? 'percent of purchases'
+							: rateUnit
+						: unitLabel}
 				</h2>
-				<p class="text-xs text-muted-foreground">
+				{#if (prefs.measure === 'statements' || prefs.measure === 'rate') && statements?.t12m}
+					<div class="text-left sm:text-right" aria-label="Last 12 months">
+						<p class="text-sm font-semibold tabular-nums">
+							{amount(statements.t12m.earned, selected.component.unit)} · {rateText(
+								selected.component
+							).value}
+						</p>
+						<p class="text-xs text-muted-foreground">
+							Last 12 months · as of {dateLabel(statements.t12m.to)} statement
+						</p>
+					</div>
+				{/if}
+				<p class="w-full text-xs text-muted-foreground">
 					{prefs.measure === 'balances'
 						? 'Each bar is an observation on its source date, or its capture day when the source gives no date.'
-						: 'Dated, posted events. Redemptions and expiry plot below zero.'}
+						: prefs.measure === 'activity'
+							? 'Dated, posted events. Redemptions and expiry plot below zero.'
+							: prefs.measure === 'statements'
+								? "Each bar is one statement's printed earnings at its closing date, split as printed."
+								: 'Printed statement earnings over net posted card purchases in the same statement window.'}
 				</p>
 			</div>
 			<BalanceChart
@@ -633,8 +727,30 @@
 			{#if !applicable.length}<p class="mt-3 text-sm text-muted-foreground">
 					{prefs.measure === 'balances'
 						? 'No balance observations in this date range.'
-						: (selected.component.diagnostics[0] ?? 'No dated, posted events in this date range.')}
+						: prefs.measure === 'activity'
+							? (selected.component.diagnostics[0] ?? 'No dated, posted events in this date range.')
+							: hasStatements
+								? 'No statement closes in this date range.'
+								: (statements?.diagnostics[0] ?? 'This program has no card statements.')}
 				</p>{/if}
+			{#if (prefs.measure === 'statements' || prefs.measure === 'rate') && hasStatements}
+				{@const unrated = statements!.periods.filter(
+					// A statement with nothing earned and nothing bought is not a gap.
+					(p) =>
+						p.rate === null &&
+						p.earned !== '0' &&
+						p.closing >= range.start &&
+						p.closing <= range.end
+				)}
+				{#if statements!.diagnostics.length || unrated.length}<ul
+						class="mt-3 flex flex-col gap-1 text-xs text-muted-foreground"
+					>
+						{#each statements!.diagnostics as d (d)}<li>{readable(d)}</li>{/each}
+						{#each unrated as p (p.id)}<li>
+								Statement closing {dateLabel(p.closing)}: {p.reason}
+							</li>{/each}
+					</ul>{/if}
+			{/if}
 		</section>
 
 		{@const c = selected.component}

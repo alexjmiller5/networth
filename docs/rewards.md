@@ -17,6 +17,11 @@ device; the URL stays clean.
   empty. Bases whose selection is in conflict, broken or incomplete are not plotted.
 - **Activity** plots posted event heads by event date, signed like the source:
   earnings above the axis, redemptions and expiry below.
+- **Statement earnings** (cards only) plots each statement's printed earned-this-period
+  total at its closing date, stacked as printed: base, bonus, or unsplit.
+- **Earning rate** (cards only) plots, per bucket, the printed earnings of statements
+  that have a rate over their net posted purchases: a percent for cash rewards or the
+  dollar lens, native units per dollar otherwise. Never an average of rates.
 - **Dollars** apply only to cash rewards (exact) or to a unit whose program has an
   owner-entered value, labelled as an estimate. Qualifying counters never have one.
 
@@ -27,10 +32,20 @@ device; the URL stays clean.
   dated fact, and a same-time capture with a different amount is a conflict.
 - **Known earned / redeemed / expired**: exact sums of known event heads only.
   Missing amounts, invalid chains or incomplete pulls withhold totals.
-- **Earning rate** = posted earned units / the card spend proved for those exact
-  events (provenance `txn -> reward_events` edges, `evidence_of`). An event with any
-  unresolved ledger citation is left out. No linked spend means "Unavailable" with
-  the reason, never zero.
+- **Earning rate** for a card with statement-period events = printed period earnings
+  over net posted purchases on that card in the same window, over the statements
+  closing in the twelve months up to the latest one ("as of" that closing date).
+  Purchases are posted card rows by posting date, refunds netted; payments (internal),
+  reward credits (Cashback/Transfer), fees and interest (bank label or issuer fee
+  wording) and cash advances (Cash & ATM, ATM/Cash Withdrawals) never count. A window
+  with no net purchases has no rate and is left out of the trailing rate, never zero.
+  Purchases outside every recorded statement are listed as diagnostics. Category
+  rates need an earning term naming the category; none exist, so cards show the
+  blended rate. Otherwise the rate = posted earned units / the card spend proved for
+  those exact events (provenance `txn -> reward_events` edges, `evidence_of`). An
+  event with any unresolved ledger citation is left out. No linked spend means
+  "Unavailable" with the reason, never zero.
+- **Earned, last 12 months** sums the same statements' printed earnings.
 - **Cap headroom** = stated cap limit minus provider-observed usage, for the current
   period (explicit bounds, or calendar quarter/year). A public cap rule alone has no
   usage, so headroom stays unavailable.

@@ -116,7 +116,10 @@ protects the site and every API route.
   measure, native/dollar lens, bucket, dates and series controls. Known immutable
   event heads produce earned, pending, redeemed and expired totals; snapshot
   differences never imply earnings. Undated balances show their latest capture,
-  labelled as a capture, never as a source-dated balance. Earning rate needs card
+  labelled as a capture, never as a source-dated balance. A card's earning rate is
+  its statements' printed period earnings (`reward_events` with period bounds) over
+  net posted purchases on that card in each statement window, trailing twelve months
+  to the latest statement (`reward-periods.ts`); without statements it needs card
   spend proved by `txn -> reward_events` provenance; cap headroom needs observed
   usage; expiry needs stated deadlines or activity dates. Terms and valuations come
   only from published `reward_terms` / `redemption_valuations`; unknown stays an

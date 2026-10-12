@@ -1,6 +1,7 @@
 import { selectRewardEventHeads, type RewardEventVersion } from './reward-history';
 import { sumRewardUnits } from './rewards';
 import { bucketLabel, dateRange, type Bucket, type StackedSeries } from './series';
+import type { PeriodEarning } from './reward-periods';
 interface ActivityEvent extends RewardEventVersion {
 	event_date: string | null;
 	units_delta: string | null;
@@ -47,7 +48,11 @@ export const REWARD_SERIES = [
 	'earned',
 	'redeemed',
 	'expired',
-	'adjusted'
+	'adjusted',
+	'period_base',
+	'period_bonus',
+	'period_other',
+	'rate'
 ];
 const ACTIVITY: Record<string, string> = {
 	earn: 'earned',
@@ -66,8 +71,9 @@ export function rewardSeries(
 		events: ActivityEvent[];
 		diagnostics: string[];
 		balanceGroups: { basis: string; status: string }[];
+		statements?: { periods: PeriodEarning[] } | null;
 	},
-	measure: 'balances' | 'activity',
+	measure: 'balances' | 'activity' | 'statements' | 'rate',
 	start: string,
 	end: string,
 	bucket: Bucket,
@@ -83,7 +89,40 @@ export function rewardSeries(
 		data[i] = add ? data[i] + value * scale : value * scale;
 		series.set(key, data);
 	};
-	if (measure === 'activity') {
+	const periods = (component.statements?.periods ?? []).filter(
+		(p) => p.closing >= start && p.closing <= end
+	);
+	if (measure === 'statements') {
+		// Printed parts of each statement's total at its closing date; no split prints as unsplit.
+		for (const p of periods) {
+			const { base, bonus, other } = p.parts;
+			if (base === null && bonus === null && other === null)
+				put('period_other', p.closing, Number(p.earned), true);
+			for (const [key, value] of [
+				['period_base', base],
+				['period_bonus', bonus],
+				['period_other', other]
+			] as const)
+				if (value !== null) put(key, p.closing, Number(value), true);
+		}
+	} else if (measure === 'rate') {
+		// A bucket's rate is its rated statements' earnings over their purchases, never an average of rates.
+		const sums = new Map<string, { earned: number; spend: number }>();
+		for (const p of periods) {
+			const label = bucketLabel(p.closing, bucket);
+			const sum = sums.get(label) ?? { earned: 0, spend: 0 };
+			if (p.rate !== null) {
+				sum.earned += Number(p.earned);
+				sum.spend += Number(p.spend);
+			}
+			sums.set(label, sum);
+		}
+		for (const [label, { earned, spend }] of sums) {
+			const data = series.get('rate') ?? new Array<number>(labels.length).fill(0);
+			data[index.get(label)!] = spend > 0 ? (earned / spend) * scale : 0;
+			series.set('rate', data);
+		}
+	} else if (measure === 'activity') {
 		for (const entry of rewardActivity(component.events, component.diagnostics.length === 0)) {
 			// Signed like the source: earnings above the axis, redemptions and expiry below.
 			put(ACTIVITY[entry.kind], entry.date, Number(entry.value), true);

@@ -922,3 +922,88 @@ it('reads term payloads the hub returns as JSON text, and rejects malformed ones
 	for (const payload of ['{', '[]', '"text"', 'null'])
 		expect(() => withTerms([{ ...stored, payload }])).toThrow('Invalid reward data');
 });
+describe('statement earnings', () => {
+	const card = { ...program, account_id: 'card' };
+	const cash = { ...component, id: 'cash', unit: 'USD', currency: 'USD', role: 'cash_reward' };
+	const period = (patch: RewardRow = {}) =>
+		event({
+			id: 'p1',
+			component_id: 'cash',
+			event_key: 'statement:p1',
+			units_delta: '3',
+			event_date: '2030-01-22',
+			period_start: '2029-12-23',
+			period_end_exclusive: '2030-01-23',
+			details: JSON.stringify({
+				schema_version: 1,
+				base_bonus: [
+					{ kind: 'base', units: '2', native_label: 'Base' },
+					{ kind: 'bonus', units: '1', native_label: 'Bonus' }
+				]
+			}),
+			...patch
+		});
+	const purchase = {
+		account_id: 'card',
+		date: '2030-01-05',
+		posted_date: '2030-01-06',
+		amount: -150,
+		name: 'SHOP',
+		bank_category: null,
+		category: 'Dining',
+		internal: false
+	};
+	const view = (
+		events: RewardRow[],
+		options: Partial<Parameters<typeof assembleRewards>[4]> = {},
+		programs: RewardRow[] = [card]
+	) =>
+		assembleRewards(programs, [cash], events, [], { complete: true, today: TODAY, ...options })
+			.programs[0].components[0];
+	it('rates printed period earnings against posted card purchases', () => {
+		const c = view([period()], { ledgers: { card: { currency: 'USD', rows: [purchase] } } });
+		expect(c.statements).toMatchObject({
+			status: 'available',
+			currency: 'USD',
+			asOf: '2030-01-22',
+			periods: [{ earned: '3', spend: '150', rate: '0.02', parts: { base: '2', bonus: '1' } }],
+			t12m: { earned: '3', rate: '0.02' }
+		});
+		expect(c.earningRate).toMatchObject({
+			status: 'available',
+			basis: 'statements',
+			asOf: '2030-01-22',
+			rate: '0.02',
+			earned: '3',
+			spend: '150',
+			currency: 'USD',
+			events: 1
+		});
+		expect(c.earned).toBe('3');
+	});
+	it('says why when the card ledger could not be read, and keeps the linked rate', () => {
+		const c = view([period()], { ledgerUnavailable: 'Card purchases are still loading.' });
+		expect(c.statements).toMatchObject({
+			status: 'unavailable',
+			diagnostics: ['Card purchases are still loading.']
+		});
+		expect(c.earningRate).toMatchObject({ status: 'unavailable', basis: 'linked' });
+	});
+	it('reports a card with no statement earnings, and leaves cardless programs out', () => {
+		expect(view([]).statements?.diagnostics).toEqual([
+			'No statement states earnings for this card.'
+		]);
+		expect(view([], {}, [program]).statements).toBeNull();
+		expect(view([period()], { complete: false }).statements?.status).toBe('unavailable');
+	});
+	it('rejects half-bounded periods and malformed printed parts', () => {
+		expect(() => view([period({ period_end_exclusive: null })])).toThrow('Invalid reward data');
+		expect(() => view([period({ period_end_exclusive: '2029-12-23' })])).toThrow(
+			'Invalid reward data'
+		);
+		expect(() => view([period({ details: '{' })])).toThrow('Invalid reward data');
+		expect(() =>
+			view([period({ details: { base_bonus: [{ kind: 'extra', units: '1' }] } })])
+		).toThrow('Invalid reward data');
+	});
+});

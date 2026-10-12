@@ -137,4 +137,72 @@ describe('rewardSeries', () => {
 				.series
 		).toEqual([]);
 	});
+	describe('statement periods', () => {
+		const earning = (
+			id: string,
+			closing: string,
+			earned: string,
+			spend: string,
+			rate: string | null,
+			parts = {}
+		) => ({
+			id,
+			start: '2030-01-01',
+			endExclusive: closing,
+			closing,
+			earned,
+			parts: { base: null, bonus: null, other: null, ...parts },
+			spend,
+			rate,
+			reason: null
+		});
+		const withPeriods = (periods: ReturnType<typeof earning>[]) => ({
+			...component([]),
+			statements: { periods }
+		});
+		it("stacks each statement's printed parts at its closing date", () => {
+			const result = rewardSeries(
+				withPeriods([
+					earning('a', '2030-01-22', '3', '100', '0.03', { base: '2', bonus: '1' }),
+					earning('b', '2030-02-22', '5', '0', null),
+					earning('late', '2030-04-22', '9', '100', '0.09', { base: '9' })
+				]),
+				'statements',
+				'2030-01-01',
+				'2030-03-31',
+				'month'
+			);
+			expect(result).toEqual({
+				dates: ['2030-01-01', '2030-02-01', '2030-03-01'],
+				series: [
+					{ key: 'period_base', data: [2, 0, 0] },
+					{ key: 'period_bonus', data: [1, 0, 0] },
+					// A statement with no printed split shows its whole total as unsplit.
+					{ key: 'period_other', data: [0, 5, 0] }
+				]
+			});
+		});
+		it('rates a bucket from its rated statements, scaled for a dollar lens', () => {
+			const result = rewardSeries(
+				withPeriods([
+					earning('a', '2030-01-05', '2', '100', '0.02'),
+					earning('b', '2030-01-25', '6', '100', '0.06'),
+					earning('refunds', '2030-01-28', '5', '-40', null),
+					earning('none', '2030-02-22', '5', '0', null)
+				]),
+				'rate',
+				'2030-01-01',
+				'2030-02-28',
+				'month',
+				0.5
+			);
+			expect(result).toEqual({
+				dates: ['2030-01-01', '2030-02-01'],
+				series: [{ key: 'rate', data: [0.02, 0] }]
+			});
+			expect(
+				rewardSeries(component([]), 'rate', '2030-01-01', '2030-01-31', 'month').series
+			).toEqual([]);
+		});
+	});
 });

@@ -5,6 +5,7 @@ import {
 	selectRewardTermHeads,
 	type RewardEventVersion
 } from './reward-history';
+import { statementEarnings, type LedgerRow, type StatementEarnings } from './reward-periods';
 import {
 	canonical,
 	decimal as exact,
@@ -21,6 +22,16 @@ interface RewardEvent extends RewardEventVersion {
 	posted_date: string | null;
 	units_delta: string | null;
 	observed_at: string;
+	/** Bounds of the provider statement period a period-total event reports. */
+	period_start: string | null;
+	period_end_exclusive: string | null;
+	details: {
+		base_bonus?: {
+			kind: 'base' | 'bonus' | 'other';
+			units: string | null;
+			native_label: string | null;
+		}[];
+	} | null;
 }
 interface Balance {
 	id: string;
@@ -59,6 +70,8 @@ interface Component {
 	diagnostics: string[];
 	expiry: ExpiryClock;
 	earningRate: EarningRate;
+	/** Statement-period earnings against card purchases; null when the program has no card. */
+	statements: (StatementEarnings & { currency: string | null }) | null;
 	/** Dollar view of the current available balance: exact cash, or an owner-valued estimate. */
 	dollar: { value: string; estimated: boolean } | null;
 	redemptions: { event: RewardEvent; valuation: Valuation | null }[];
@@ -110,6 +123,10 @@ export interface ExpiryClock {
 }
 export interface EarningRate {
 	status: 'available' | 'unavailable';
+	/** linked: spend proved per event; statements: printed period earnings over posted purchases. */
+	basis: 'linked' | 'statements';
+	/** Latest statement closing date behind a statements rate. */
+	asOf: string | null;
 	/** Native units per unit of linked spend currency. */
 	rate: string | null;
 	earned: string | null;
@@ -137,6 +154,10 @@ export interface RewardOptions {
 	values?: { program_id: string; value_per_unit: string; revision: number }[];
 	/** Card spend proved for an exact earning event (provenance txn -> reward_events edges). */
 	links?: { event_id: string; amount: string; currency: string }[];
+	/** Card ledgers by account id, for statement-period rates; absent when not read. */
+	ledgers?: Record<string, { currency: string; rows: LedgerRow[] }>;
+	/** Why ledgers are absent while period events exist. */
+	ledgerUnavailable?: string;
 }
 export interface Rewards {
 	programs: Program[];
@@ -337,6 +358,7 @@ export function assembleRewards(
 			diagnostics: [],
 			expiry: { status: 'unknown', expiresOn: null, verified: false, reason: '' },
 			earningRate: unavailableRate(''),
+			statements: null,
 			dollar: null,
 			redemptions: []
 		};
@@ -369,7 +391,8 @@ export function assembleRewards(
 			posted_date: date(row.posted_date),
 			units_delta,
 			observed_at: instant(row.observed_at),
-			supersedes_id: optional(row.supersedes_id)
+			supersedes_id: optional(row.supersedes_id),
+			...period(row)
 		};
 		events.push(value);
 		component.events.push(value);
@@ -542,6 +565,43 @@ export function assembleRewards(
 		component.earningRate = options.complete
 			? earningRate(component.events, links)
 			: unavailableRate('Complete event history unavailable.');
+		if (program.account_id && component.role !== 'qualifying') {
+			const ledger = options.ledgers?.[program.account_id];
+			const result = !options.complete
+				? null
+				: ledger
+					? statementEarnings(component.events, ledger.rows.map(ledgerRow))
+					: component.events.some((e) => e.period_start)
+						? null
+						: statementEarnings([], []);
+			component.statements = result
+				? { ...result, currency: ledger?.currency ?? null }
+				: {
+						status: 'unavailable',
+						periods: [],
+						t12m: null,
+						asOf: null,
+						currency: null,
+						diagnostics: [
+							options.complete
+								? (options.ledgerUnavailable ?? 'Card purchases could not be read.')
+								: 'Complete event history unavailable.'
+						]
+					};
+			const t = result?.t12m;
+			if (t?.rate && ledger)
+				component.earningRate = {
+					status: 'available',
+					basis: 'statements',
+					asOf: t.to,
+					rate: t.rate,
+					earned: t.ratedEarned,
+					spend: t.spend,
+					currency: ledger.currency,
+					events: t.periods - t.unrated,
+					reason: null
+				};
+		}
 		const available = currentBalance(component, 'available');
 		component.dollar = available ? dollarValue(component, available.amount, program) : null;
 		for (const group of selectRewardEventHeads(component.events)) {
@@ -765,8 +825,44 @@ export function capHeadroom(t: Term, today: string): CapHeadroom {
 	};
 }
 
+/** Period bounds and printed parts; a period event without both bounds is invalid. */
+function period(
+	row: RewardRow
+): Pick<RewardEvent, 'period_start' | 'period_end_exclusive' | 'details'> {
+	const start = date(row.period_start),
+		end = date(row.period_end_exclusive);
+	if (Boolean(start) !== Boolean(end) || (start && end && end <= start)) fail();
+	let details: RewardEvent['details'] = null;
+	if (row.details != null) {
+		let parsed: unknown = row.details;
+		if (typeof parsed === 'string')
+			try {
+				parsed = JSON.parse(parsed);
+			} catch {
+				fail();
+			}
+		if (!parsed || typeof parsed !== 'object') fail();
+		const parts = (parsed as { base_bonus?: unknown }).base_bonus;
+		if (parts != null && !Array.isArray(parts)) fail();
+		details = {
+			base_bonus: (parts ?? []).map((p: Record<string, unknown>) => ({
+				kind: choice(p?.kind, ['base', 'bonus', 'other']),
+				units: p.units == null ? null : decimal(p.units),
+				native_label: optional(p.native_label)
+			}))
+		};
+	}
+	return { period_start: start, period_end_exclusive: end, details };
+}
+function ledgerRow(row: LedgerRow): LedgerRow {
+	if (!isDate(row.date) || (row.posted_date !== null && !isDate(row.posted_date))) fail();
+	if (typeof row.amount !== 'number' || !Number.isFinite(row.amount)) fail();
+	return row;
+}
 const unavailableRate = (reason: string): EarningRate => ({
 	status: 'unavailable',
+	basis: 'linked',
+	asOf: null,
 	rate: null,
 	earned: null,
 	spend: null,
@@ -804,6 +900,8 @@ export function earningRate(
 	if (exact(total).coefficient <= 0n) return unavailableRate('Linked spend is not positive.');
 	return {
 		status: 'available',
+		basis: 'linked',
+		asOf: null,
 		rate: quotient(exact(units), exact(total), 6),
 		earned: units,
 		spend: total,

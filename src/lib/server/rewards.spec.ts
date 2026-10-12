@@ -117,3 +117,71 @@ it('reads owner values from the dashboard store only', async () => {
 	const view = await loadRewards({ ...input(hub([]).fetch), db });
 	expect(view.programs[0].value).toEqual({ value_per_unit: '0.015', revision: 1 });
 });
+it('rates statement periods against the card ledger, leaving pending rows and payments out', async () => {
+	const period = {
+		...rows.reward_events[0],
+		id: 'statement',
+		event_key: 'statement',
+		units_delta: '3',
+		event_date: '2030-01-22',
+		period_start: '2029-12-23',
+		period_end_exclusive: '2030-01-23',
+		details: JSON.stringify({ schema_version: 1, base_bonus: [] })
+	};
+	const txn = (id: string, amount: number, extra: Record<string, unknown> = {}) => ({
+		id,
+		account_id: 'card',
+		date: '2030-01-05',
+		posted_date: '2030-01-06',
+		amount,
+		name: 'SHOP',
+		bank_category: null,
+		status: 'Posted',
+		...extra
+	});
+	const fake = fakeHub({
+		...rows,
+		reward_events: [period],
+		provenance: [],
+		accounts: [{ id: 'card', source: 'bank', currency: 'USD' }],
+		overlay: [
+			{ id: 'o1', source: 'bank', source_id: 'pay', category: 'Transfer', internal: 1 },
+			{ id: 'o2', source: 'bank', source_id: 'moved', category: null, internal: 1 }
+		],
+		txns_bank: [
+			txn('buy', -150),
+			txn('pending', -999, { status: 'Pending' }),
+			txn('pay', 500),
+			txn('moved', -300),
+			txn('fee', -2, { name: 'FOREIGN TRANSACTION FEE' }),
+			txn('other-card', -999, { account_id: 'elsewhere' })
+		]
+	});
+	const estate = vi.fn();
+	const component = (await loadRewards(input(fake.fetch, estate))).programs[0].components[0];
+	expect(estate).not.toHaveBeenCalled();
+	expect(component.statements).toMatchObject({
+		status: 'available',
+		periods: [{ earned: '3', spend: '150', rate: '0.02' }]
+	});
+	expect(component.earningRate).toMatchObject({ basis: 'statements', rate: '0.02', spend: '150' });
+	expect(fake.pulls().find((p) => p.table === 'txns_bank')?.columns).toEqual(
+		expect.arrayContaining(['posted_date', 'name', 'bank_category', 'status'])
+	);
+});
+it('says why when the card ledger cannot be read', async () => {
+	const fake = fakeHub({
+		...rows,
+		reward_events: [
+			{ ...rows.reward_events[0], period_start: '2029-12-23', period_end_exclusive: '2030-01-23' }
+		],
+		provenance: [],
+		accounts: [{ id: 'card', source: 'BAD SOURCE', currency: 'USD' }],
+		overlay: []
+	});
+	const component = (await loadRewards(input(fake.fetch))).programs[0].components[0];
+	expect(component.statements).toMatchObject({
+		status: 'unavailable',
+		diagnostics: ['Card purchases could not be read. Try refreshing.']
+	});
+});
