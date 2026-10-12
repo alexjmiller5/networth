@@ -532,7 +532,8 @@
 			</button>
 			{#if onDrill && drillable.includes(key)}<button
 					type="button"
-					class="-ml-1 flex h-9 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+					class="-ml-1 flex h-9 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:opacity-40"
+					disabled={!applicable.includes(key)}
 					aria-label={`Show the ${labelFor(key)} breakdown`}
 					title={`Show the ${labelFor(key)} breakdown`}
 					onclick={() => onDrill(key)}><IconChevronRight size={14} /></button
