@@ -32,7 +32,17 @@ categories, reconciliation records, Venmo statement evidence, and points
 history using its own read-only Soma token. Only the fields needed
 by the dashboard reach the browser. The token, raw provider payloads, notes,
 and stated balance evidence remain server-side. Responses are private and
-not cached server-side. Cloudflare Access protects the entire site and API.
+never cached as responses. Cloudflare Access protects the entire site and API.
+
+The Worker keeps its own copy of the Soma rows it reads in the
+`ESTATE_CACHE_DB` D1 database (`networth-estate-cache`, schema in
+`migrations-estate-cache/`), with each table's pull cursor. A load asks the
+hub what changed in one request and pulls only that, so an unchanged estate
+costs one hub request. The copy is disposable: the daily cron resets the
+cursors so the next load re-reads everything, and the dashboard still works
+(with full reads) when the database is missing. Provision it like the other
+databases with `scripts/cf-d1.py`, then apply its migrations with
+`bunx wrangler d1 migrations apply networth-estate-cache --remote`.
 
 - **Balances** use signed raw ledger amounts, including genuine opening
   entries. Shares and spending categories never change a bank balance.

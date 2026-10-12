@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { loadRewards, readRewardValues } from './rewards';
 import { sqliteD1 } from './sqlite-d1';
+import { fakeHub } from './fake-hub';
 const rows: Record<string, Record<string, unknown>[]> = {
 	reward_programs: [{ id: 'p', label: 'Example', provider: 'Example', account_id: 'card' }],
 	reward_components: [
@@ -31,49 +32,50 @@ const rows: Record<string, Record<string, unknown>[]> = {
 	reward_terms: [],
 	redemption_valuations: []
 };
-function hub(edges: Record<string, unknown>[]) {
-	return vi.fn<typeof fetch>(async (_url, init) => {
-		const body = JSON.parse(String(init?.body));
-		if (body.table === 'provenance') {
-			expect(body.where).toEqual({
-				to_kind: 'reward_events',
-				from_kind: 'txn',
-				rel: 'evidence_of'
-			});
-			return Response.json({ rows: edges });
-		}
-		return Response.json({ rows: rows[body.table] ?? [] });
+// Spend links are `txn -> reward_events` evidence edges in provenance.
+const link = (id: string, from_ref: string, to_ref: string) => ({
+	id,
+	from_ref,
+	to_ref,
+	from_kind: 'txn',
+	to_kind: 'reward_events',
+	rel: 'evidence_of'
+});
+const hub = (edges: Record<string, unknown>[]) =>
+	fakeHub({
+		...rows,
+		provenance: [...edges, { ...link('other', 'bank:t1', 'a'), rel: 'imported_from' }]
 	});
-}
 const input = (fetch: typeof globalThis.fetch, estate = vi.fn()) => ({
-	hub: 'https://hub.example',
-	token: 'synthetic',
-	fetch,
+	source: { hub: 'https://hub.example', token: 'synthetic', fetch },
 	db: undefined,
 	today: '2030-05-10',
 	estate
 });
-it('reads links and valuations only when earn or redeem events exist', async () => {
-	const fetch = hub([]);
+it('reads every reward table and the links slice in one cursor round', async () => {
+	const fake = hub([]);
+	await loadRewards(input(fake.fetch));
+	expect(fake.requests.filter((r) => r.path === '/v1/cursor')).toHaveLength(1);
+	expect(fake.pulls().find((p) => p.table === 'provenance')?.where).toEqual({
+		to_kind: 'reward_events',
+		from_kind: 'txn',
+		rel: 'evidence_of'
+	});
+});
+it('uses links only for earn events', async () => {
 	const saved = rows.reward_events;
 	rows.reward_events = [];
+	const estate = vi.fn();
 	try {
-		await loadRewards(input(fetch));
+		await loadRewards(input(hub([link('e1', 'bank:t1', 'a')]).fetch, estate));
 	} finally {
 		rows.reward_events = saved;
 	}
-	const tables = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).table);
-	expect(tables.sort()).toEqual([
-		'points_balances',
-		'reward_components',
-		'reward_events',
-		'reward_programs',
-		'reward_terms'
-	]);
+	expect(estate).not.toHaveBeenCalled();
 });
 it('does not read the ledger when no spend is linked', async () => {
 	const estate = vi.fn();
-	const view = await loadRewards(input(hub([]), estate));
+	const view = await loadRewards(input(hub([]).fetch, estate));
 	expect(estate).not.toHaveBeenCalled();
 	expect(view).toMatchObject({
 		valuesUnavailable: true,
@@ -91,11 +93,8 @@ it('turns cited ledger rows into proved spend and drops partly unresolved events
 	}));
 	const view = await loadRewards(
 		input(
-			hub([
-				{ id: 'e1', from_ref: 'bank:t1', to_ref: 'a', deleted_at: null },
-				{ id: 'e2', from_ref: 'bank:missing', to_ref: 'b', deleted_at: null },
-				{ id: 'e3', from_ref: 'bank:t1', to_ref: 'b', deleted_at: null }
-			]),
+			hub([link('e1', 'bank:t1', 'a'), link('e2', 'bank:missing', 'b'), link('e3', 'bank:t1', 'b')])
+				.fetch,
 			estate
 		)
 	);
@@ -115,6 +114,6 @@ it('reads owner values from the dashboard store only', async () => {
 		unavailable: false
 	});
 	expect(await readRewardValues(undefined)).toEqual({ values: [], unavailable: true });
-	const view = await loadRewards({ ...input(hub([])), db });
+	const view = await loadRewards({ ...input(hub([]).fetch), db });
 	expect(view.programs[0].value).toEqual({ value_per_unit: '0.015', revision: 1 });
 });

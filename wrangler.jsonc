@@ -39,6 +39,13 @@
 			"database_name": "networth-prices",
 			"database_id": "0ae6d643-097f-452b-a104-1870bafe2e9e",
 			"migrations_dir": "migrations-prices"
+		},
+		{
+			// Disposable copy of the Soma tables Networth reads, with their pull cursors.
+			"binding": "ESTATE_CACHE_DB",
+			"database_name": "networth-estate-cache",
+			"database_id": "dbfbd287-e2b7-433b-b558-68921f3e0f97",
+			"migrations_dir": "migrations-estate-cache"
 		}
 	],
 	// Daily price cache refresh (worker.js `scheduled`), after US mutual fund NAVs post.

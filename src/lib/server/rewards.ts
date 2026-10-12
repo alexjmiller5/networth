@@ -1,77 +1,16 @@
-import { pullNativeTable } from './native-finance';
+import { readEstate, type EstateSource } from './estate';
 import { assembleRewards, type Rewards } from '$lib/finance/rewards';
 import type { Estate } from '$lib/finance/assemble';
 
 export const LEGACY = ['id', 'program', 'points', 'scraped_at', 'deleted_at'];
-const TABLES = {
-	reward_programs: ['id', 'label', 'provider', 'account_id', 'deleted_at'],
-	reward_components: [
-		'id',
-		'program_id',
-		'component_key',
-		'label',
-		'unit',
-		'role',
-		'currency',
-		'deleted_at'
-	],
-	reward_events: [
-		'id',
-		'component_id',
-		'event_key',
-		'kind',
-		'state',
-		'event_date',
-		'occurred_at',
-		'posted_date',
-		'units_delta',
-		'observed_at',
-		'supersedes_id',
-		'deleted_at'
-	],
-	points_balances: [
-		...LEGACY,
-		'component_id',
-		'exact_amount',
-		'basis',
-		'source_as_of',
-		'source_date',
-		'period_start',
-		'period_end_exclusive',
-		'supersedes_id'
-	],
-	reward_terms: [
-		'id',
-		'program_id',
-		'component_id',
-		'term_key',
-		'kind',
-		'applicability',
-		'effective_from',
-		'effective_until',
-		'source_as_of',
-		'payload',
-		'supersedes_id',
-		'deleted_at'
-	]
-};
-
-const VALUATIONS = [
-	'id',
-	'event_id',
-	'basis',
-	'comparable_amount',
-	'currency',
-	'comparable_scope',
-	'reward_value',
-	'rate_at_redemption',
-	'units_consumed',
-	'valued_at',
-	'supersedes_id',
-	'deleted_at'
+const TABLES = [
+	'reward_programs',
+	'reward_components',
+	'reward_events',
+	'points_balances',
+	'reward_terms',
+	'redemption_valuations'
 ];
-// Proved spend for an exact earning event: a ledger row cited as its evidence.
-const LINKS = { to_kind: 'reward_events', from_kind: 'txn', rel: 'evidence_of' };
 
 export interface RewardsView extends Rewards {
 	typedUnavailable: boolean;
@@ -98,32 +37,21 @@ const money = (n: number) => (n.toFixed(2).replace(/\.?0+$/, '') || '0').replace
 
 /** Typed rewards with terms, valuations, owner values and linked spend. Throws when typed tables fail. */
 export async function loadRewards(input: {
-	hub: string;
-	token: string;
-	fetch: typeof fetch;
+	source: EstateSource;
 	db: D1Database | undefined;
 	today: string;
 	/** Loaded only when spend links exist; their ledger rows give the proved spend. */
 	estate: () => Promise<Pick<Estate, 'accounts' | 'txns'>>;
 }): Promise<RewardsView> {
-	const pull = (table: string, columns: string[], where?: Record<string, string>) =>
-		pullNativeTable(input.hub, input.token, table, columns, input.fetch, where);
-	const [tables, owner] = await Promise.all([
-		Promise.all(Object.entries(TABLES).map(([table, columns]) => pull(table, columns))),
+	const [{ rows, complete }, owner] = await Promise.all([
+		readEstate(input.source, TABLES, { slices: ['reward_links'] }),
 		readRewardValues(input.db)
 	]);
-	const [programs, components, events, balances, terms] = tables;
-	// Workers allow six concurrent outbound connections. Links and valuations only matter
-	// for earn and redeem events, so they are a second, conditional wave.
-	const kinds = new Set(events.rows.filter((e) => e.deleted_at == null).map((e) => e.kind));
-	const none = { rows: [] as Record<string, unknown>[], complete: true };
-	const [edges, valuations] = await Promise.all([
-		kinds.has('earn')
-			? pull('provenance', ['id', 'from_ref', 'to_ref', 'deleted_at'], LINKS)
-			: none,
-		kinds.has('redeem') ? pull('redemption_valuations', VALUATIONS) : none
-	]);
-	const live = edges.rows.filter((e) => e.deleted_at == null);
+	// Links matter only for earn events and valuations only for redeem events.
+	const kinds = new Set(rows.reward_events.filter((e) => e.deleted_at == null).map((e) => e.kind));
+	const edges = kinds.has('earn') ? rows.reward_links : [];
+	const valuations = kinds.has('redeem') ? rows.redemption_valuations : [];
+	const live = edges.filter((e) => e.deleted_at == null);
 	const links: { event_id: string; amount: string; currency: string }[] = [];
 	if (live.length) {
 		const estate = await input.estate();
@@ -133,10 +61,10 @@ export async function loadRewards(input: {
 		for (const e of live)
 			byEvent.set(String(e.to_ref), [...(byEvent.get(String(e.to_ref)) ?? []), e.from_ref]);
 		for (const [event_id, refs] of byEvent) {
-			const rows = refs.map((ref) => ledger.get(String(ref)));
+			const cited = refs.map((ref) => ledger.get(String(ref)));
 			// One unresolved citation would understate spend and overstate the rate: drop the event.
-			if (rows.some((t) => !t || !t.account_id || !currency.get(t.account_id))) continue;
-			for (const t of rows)
+			if (cited.some((t) => !t || !t.account_id || !currency.get(t.account_id))) continue;
+			for (const t of cited)
 				links.push({
 					event_id,
 					amount: money(-t!.amount),
@@ -145,14 +73,20 @@ export async function loadRewards(input: {
 		}
 	}
 	return {
-		...assembleRewards(programs.rows, components.rows, events.rows, balances.rows, {
-			complete: [...tables, edges, valuations].every((r) => r.complete),
-			today: input.today,
-			terms: terms.rows,
-			valuations: valuations.rows,
-			values: owner.values,
-			links
-		}),
+		...assembleRewards(
+			rows.reward_programs,
+			rows.reward_components,
+			rows.reward_events,
+			rows.points_balances,
+			{
+				complete,
+				today: input.today,
+				terms: rows.reward_terms,
+				valuations,
+				values: owner.values,
+				links
+			}
+		),
 		typedUnavailable: false,
 		valuesUnavailable: owner.unavailable,
 		today: input.today

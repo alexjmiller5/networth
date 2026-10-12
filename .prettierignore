@@ -13,3 +13,7 @@ worker-configuration.d.ts
 
 # Local Python tool caches (host/)
 .pytest_cache/
+
+# Vendored verbatim from soma (core/src/table-pull.js); refresh by copying, never reformat
+src/lib/server/table-pull.js
+src/lib/server/table-pull.d.ts

@@ -168,20 +168,6 @@ export async function refreshPrices(
 	return out;
 }
 
-export const INSTRUMENT_COLUMNS = ['id', 'account_id', 'native_security_id', 'deleted_at'];
-export const OBSERVATION_COLUMNS = [
-	'instrument_id',
-	'metric',
-	'exact_amount',
-	'currency',
-	'value_status',
-	'price_kind',
-	'source_date',
-	'time_basis',
-	'captured_at',
-	'deleted_at'
-];
-
 /** Value the estate's investment accounts from the cache plus Soma's native NAV and unit
  * observations, joined only within each observation's own account and security. */
 export async function valueEstate(

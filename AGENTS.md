@@ -17,14 +17,20 @@ protects the site and every API route.
   enabled for the public URL read path. Local runtime tests cannot prove
   Cloudflare's production routing; verify an authenticated API response
   after deploying.
-  Start with the supported complete-table pull (omit `limit`) to avoid serial
-  small-page latency on cold loads. Pull every returned `next_cursor` page before
-  assembly with `limit: 200`, sending the opaque cursor as
-  `after` to the same configured destination with the same table/column list.
-  Missing/null cursors end a pull (including legacy complete responses).
-  Continuing pages must be nonempty with a strictly advancing string cursor;
-  malformed or failed pages reject the whole response. Each table's complete
-  pull shares a 20-second timeout.
+  Every Soma read goes through `readEstate` (`src/lib/server/estate.ts`): soma's
+  table-pull helper, vendored verbatim as `table-pull.js`/`.d.ts` (refresh by
+  copying soma's `core/src/table-pull.js` and `.d.ts`), asks `/v1/cursor` once per
+  load and pulls only tables whose mark moved, in batches. `ESTATE_CACHE_DB`
+  (`networth-estate-cache`, `migrations-estate-cache/`) holds the pulled rows,
+  tombstones included, and each table's cursor, so a quiet load is one hub request.
+  Each table has one column list (`COLUMNS`, the union of what the routes read);
+  another list re-pulls it in full. `provenance` is never copied: its
+  `SLICES` are re-read whole only when its watched mark moves. Ledgers named by
+  cached accounts ride the same cursor request. The cache is disposable: missing
+  or failing, reads fall back to full pulls; the daily cron empties `pull_state`
+  so rows purged on the hub leave within a day (empty it to force a re-read).
+  Redirects fail closed (`redirect: 'manual'`), one 20-second deadline per read.
+  A read that walked several pages is `complete: false`: no snapshot spans pages.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
@@ -142,7 +148,8 @@ protects the site and every API route.
 - Use the soma catalog for category names, kinds, and icons. Do not
   encode the owner's taxonomy or transaction data in this repository.
 - Unit tests live beside the code. Endpoint tests cover credential isolation
-  and malformed upstream data; financial tests cover shares, refunds, and
+  and malformed upstream data against `fake-hub.ts` (an in-memory hub speaking
+  the cursor and pull routes); financial tests cover shares, refunds, and
   balance reconciliation. Run `uv run --with httpx python scripts/test_provision.py`
   for credential provisioning and deployment transport checks.
 - `scripts/sync-secrets.sh --deploy` passes code and the runtime secrets
@@ -154,6 +161,7 @@ protects the site and every API route.
 
 - `MARKERS_DB` holds owner-entered dashboard state: event markers and reward program
   values (`reward_values`). `PRICES_DB` holds price sources and the price cache.
+  `ESTATE_CACHE_DB` holds the disposable copy of the Soma tables Networth reads.
 - `wrangler.jsonc` deploys `worker.js`, which wraps the SvelteKit Worker (the adapter
   writes it per `svelte.wrangler.jsonc`) with the cron handler; the cron calls the
   refresh route in-process, so it never crosses Cloudflare Access.
