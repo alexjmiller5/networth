@@ -286,6 +286,25 @@ describe('assemble', () => {
 		]);
 	});
 
+	it('reads each category parent, leaving top-level categories without one', () => {
+		const nested = assemble({
+			...tables,
+			categories: [
+				...tables.categories,
+				{
+					id: 'deli',
+					name: 'Deli',
+					kind: 'spending',
+					icon: 'tabler:tag',
+					sort: 5,
+					parent_id: 'category-0'
+				}
+			]
+		});
+		expect(nested.categories.find((c) => c.id === 'deli')?.parentId).toBe('category-0');
+		expect(nested.categories.find((c) => c.id === 'category-0')).not.toHaveProperty('parentId');
+	});
+
 	it('applies the live overlay: category, internal, excluded; drops deleted rows', () => {
 		const by = new Map(e.txns.filter((t) => !t.standalone).map((t) => [t.amount, t]));
 		expect(by.get(-20)).toMatchObject({ category: 'Dining', date: '2026-02-02' });

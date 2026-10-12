@@ -708,3 +708,145 @@ describe('initial date horizon', () => {
 		]);
 	});
 });
+
+describe('category drill-down', () => {
+	const tree = [
+		{ id: 'travel', name: 'Travel', kind: 'spending' as const, icon: 'tabler:luggage', sort: 10 },
+		{
+			id: 'airfare',
+			name: 'Airfare',
+			kind: 'spending' as const,
+			icon: 'tabler:plane',
+			sort: 12,
+			parentId: 'travel'
+		},
+		{
+			id: 'lodging',
+			name: 'Accommodation',
+			kind: 'spending' as const,
+			icon: 'tabler:bed',
+			sort: 16,
+			parentId: 'travel'
+		},
+		{ id: 'dining', name: 'Dining', kind: 'spending' as const, icon: 'tabler:x', sort: 30 },
+		{ id: 'jobs', name: 'Jobs', kind: 'income' as const, icon: 'tabler:briefcase', sort: 300 },
+		{
+			id: 'co',
+			name: 'Employer',
+			kind: 'income' as const,
+			icon: 'tabler:building-bank',
+			sort: 301,
+			parentId: 'jobs'
+		},
+		{
+			id: 'k',
+			name: '401(k)',
+			kind: 'income' as const,
+			icon: 'tabler:pig-money',
+			sort: 302,
+			parentId: 'co'
+		},
+		{
+			id: 'uni',
+			name: 'University',
+			kind: 'income' as const,
+			icon: 'tabler:chalkboard',
+			sort: 303,
+			parentId: 'jobs'
+		}
+	];
+	const row = (date: string, amount: number, category: string, kind = 'spending' as const) => ({
+		account_id: 'account-1',
+		date,
+		amount,
+		category,
+		categoryKind: kind as 'spending' | 'income'
+	});
+	const rows = [
+		row(min, -100, 'Airfare'),
+		row('2026-02-01', -40, 'Accommodation'),
+		row('2026-02-02', -7, 'Travel'),
+		{
+			account_id: 'account-1',
+			date: '2026-02-03',
+			amount: -60,
+			shares: [{ amount: -25, category: 'Accommodation', categoryKind: 'spending' as const }]
+		},
+		row('2026-02-04', -12, 'Dining'),
+		{ ...row('2026-02-05', 2000, 'Employer'), categoryKind: 'income' as const },
+		{ ...row('2026-02-05', 300, '401(k)'), categoryKind: 'income' as const },
+		{ ...row('2026-02-06', 150, 'University'), categoryKind: 'income' as const }
+	];
+	const view = (categoryNode: string, extra: Record<string, unknown> = {}) =>
+		buildView(
+			rows,
+			accounts,
+			tree,
+			state({
+				groupBy: 'category',
+				activePreset: '',
+				dateStart: min,
+				dateEnd: max,
+				categoryNode,
+				...extra
+			})
+		);
+	const value = (v: ReturnType<typeof view>, key: string) =>
+		v.summary.find((r) => r.key === key)?.value;
+
+	it('rolls every child into its top-level parent', () => {
+		const top = view('');
+		expect(top.keys).toEqual(['Travel', 'Dining', 'Jobs']);
+		expect(value(top, 'Travel')).toBe(-172);
+		expect(value(top, 'Jobs')).toBe(2450);
+		expect(top.total).toBe(2266);
+	});
+
+	it.each([
+		['travel', 'Travel', ''],
+		['jobs', 'Jobs', ''],
+		['co', 'Employer', 'jobs']
+	])('sums the breakdown of %s to its parent total', (node, parent, parentNode) => {
+		const expected = value(view(parentNode), parent);
+		const level = view(node);
+		const sum = level.summary.reduce((s, r) => s + (r.value ?? 0), 0);
+		expect(Math.round(sum * 100) / 100).toBe(expected);
+		expect(level.total).toBe(expected);
+	});
+
+	it("shows a parent's own rows under their own key and nothing outside the parent", () => {
+		const v = view('travel');
+		expect(v.keys).toEqual(['Airfare', 'Accommodation', 'Travel (other)']);
+		expect(value(v, 'Travel (other)')).toBe(-7);
+		expect(value(v, 'Accommodation')).toBe(-65);
+		expect(v.applicable).not.toContain('Dining');
+		expect(v.title).toBe('Net flow · Travel');
+		expect(v.drill.path.map((c) => c.id)).toEqual(['travel']);
+		expect(view('co').title).toBe('Net flow · Jobs › Employer');
+		expect(view('co').drill.path.map((c) => c.id)).toEqual(['jobs', 'co']);
+	});
+
+	it('marks the keys that have a breakdown', () => {
+		expect(view('').drill.drillable).toEqual(['Travel', 'Jobs']);
+		expect(view('jobs').drill.drillable).toEqual(['Employer']);
+		expect(view('co').drill.drillable).toEqual([]);
+	});
+
+	it('falls back to the top level for an unknown node or one without children', () => {
+		expect(view('nope').keys).toEqual(['Travel', 'Dining', 'Jobs']);
+		expect(view('dining').drill.path).toEqual([]);
+	});
+
+	it('persists the drill node and drops a corrupt one', () => {
+		expect(state({ categoryNode: 'travel' }).categoryNode).toBe('travel');
+		expect(state({ categoryNode: 4 } as never).categoryNode).toBe('');
+		expect(restore().categoryNode).toBe('');
+	});
+
+	it('leaves account groupings untouched by a saved drill node', () => {
+		const v = view('travel', { groupBy: 'account', measure: 'activity' });
+		expect(v.keys).toEqual(['account-1']);
+		expect(v.total).toBe(2266);
+		expect(v.title).toBe('Net flow');
+	});
+});

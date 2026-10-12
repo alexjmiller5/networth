@@ -10,6 +10,7 @@
 	} from '$lib/finance/markers';
 	import { formatMoney, formatMoneyTick } from '$lib/finance/display';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
+	import IconChevronRight from '@tabler/icons-svelte/icons/chevron-right';
 	import { colorForSlot, needsNet } from '$lib/finance/chartStyle';
 	import {
 		Chart,
@@ -70,6 +71,9 @@
 		format?: (value: number) => string;
 		tickFormat?: (value: number) => string;
 		ariaLabel?: string;
+		/** Series with a breakdown: a click on their bars or legend chevron opens it. */
+		drillable?: string[];
+		onDrill?: (key: string) => void;
 	}
 	const {
 		markers = [],
@@ -89,7 +93,9 @@
 		iconComponent = () => IconHelp,
 		format,
 		tickFormat,
-		ariaLabel = 'Financial series for the selected date range'
+		ariaLabel = 'Financial series for the selected date range',
+		drillable = [],
+		onDrill
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement;
@@ -260,6 +266,14 @@
 			return url ? iconCanvas(url, color(key)) : 'rectRounded';
 		};
 		const showNet = needsNet(data, net);
+		// The exact segment under the pointer, not the whole index column the tooltip reads.
+		const drillTarget = (event: { native: Event | null }, c: Chart) => {
+			const hit = event.native
+				? c.getElementsAtEventForMode(event.native, 'nearest', { intersect: true }, true)[0]
+				: undefined;
+			const key = hit && data.series[hit.datasetIndex]?.key;
+			return key && drillable.includes(key) ? key : undefined;
+		};
 
 		// The net line lives in its own stack group so the stacked y-scale never
 		// adds it to the account bands - it plots the true total.
@@ -326,6 +340,13 @@
 				maintainAspectRatio: false,
 				animation: false,
 				interaction: { mode: 'index', intersect: false },
+				onClick: (event, _elements, c) => {
+					const key = drillTarget(event, c);
+					if (key) onDrill?.(key);
+				},
+				onHover: (event, _elements, c) => {
+					c.canvas.style.cursor = drillTarget(event, c) ? 'pointer' : '';
+				},
 				scales: {
 					x: {
 						type: 'time',
@@ -485,25 +506,37 @@
 	aria-label="Chart legend"
 >
 	{#each legendKeys as key (key)}
-		<button
-			type="button"
-			class="flex min-h-9 max-w-full items-center gap-1.5 rounded px-1 text-xs disabled:opacity-40"
-			aria-pressed={!hidden.includes(key)}
-			disabled={!applicable.includes(key)}
-			onclick={() => onToggle(key)}
-			title={applicable.includes(key)
-				? `Toggle ${labelFor(key)}`
-				: `${labelFor(key)}: no data in this view`}
-		>
-			{#if iconFor(key)}<span
-					class="series-icon"
-					style:color={color(key)}
-					style:mask-image={`url("${iconFor(key)}")`}
-					aria-hidden="true"
-				></span>{:else}{@const Icon = iconComponent(key)}<Icon size={16} color={color(key)} />{/if}
-			<span class:line-through={hidden.includes(key)} class="break-words text-left"
-				>{labelFor(key)}</span
+		<span class="flex max-w-full items-center">
+			<button
+				type="button"
+				class="flex min-h-9 max-w-full items-center gap-1.5 rounded px-1 text-xs disabled:opacity-40"
+				aria-pressed={!hidden.includes(key)}
+				disabled={!applicable.includes(key)}
+				onclick={() => onToggle(key)}
+				title={applicable.includes(key)
+					? `Toggle ${labelFor(key)}`
+					: `${labelFor(key)}: no data in this view`}
 			>
-		</button>
+				{#if iconFor(key)}<span
+						class="series-icon"
+						style:color={color(key)}
+						style:mask-image={`url("${iconFor(key)}")`}
+						aria-hidden="true"
+					></span>{:else}{@const Icon = iconComponent(key)}<Icon
+						size={16}
+						color={color(key)}
+					/>{/if}
+				<span class:line-through={hidden.includes(key)} class="break-words text-left"
+					>{labelFor(key)}</span
+				>
+			</button>
+			{#if onDrill && drillable.includes(key)}<button
+					type="button"
+					class="-ml-1 flex h-9 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+					aria-label={`Show the ${labelFor(key)} breakdown`}
+					title={`Show the ${labelFor(key)} breakdown`}
+					onclick={() => onDrill(key)}><IconChevronRight size={14} /></button
+				>{/if}
+		</span>
 	{/each}
 </div>

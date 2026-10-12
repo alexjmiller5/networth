@@ -37,6 +37,10 @@
 	import IconGift from '@tabler/icons-svelte/icons/gift';
 	import IconActivity from '@tabler/icons-svelte/icons/activity';
 	import IconLockDollar from '@tabler/icons-svelte/icons/lock-dollar';
+	import IconHierarchy2 from '@tabler/icons-svelte/icons/hierarchy-2';
+	import IconChevronRight from '@tabler/icons-svelte/icons/chevron-right';
+	import IconArrowLeft from '@tabler/icons-svelte/icons/arrow-left';
+	import { categoryTree, lineage, ownerOf } from '$lib/finance/categoryTree';
 	import {
 		PRESET_LABELS,
 		clampRange,
@@ -150,6 +154,25 @@
 					.map((c) => c.name)
 			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets), REWARDS_PAID])]
 	);
+	// Every category with a breakdown, labelled with its full path for the drill lens.
+	const TOP = '__top__';
+	const parents = $derived.by(() => {
+		const tree = categoryTree(categories);
+		return categories
+			.filter((c) => tree.children.has(c.id))
+			.map((c) => ({
+				id: c.id,
+				label: lineage(tree, c.id)
+					.map((x) => x.name)
+					.join(' › ')
+			}))
+			.sort((a, b) => a.label.localeCompare(b.label));
+	});
+	const drillPath = $derived(view.drill.path);
+	function drill(name: string): void {
+		const category = categories.find((c) => c.name === name);
+		if (category) controls.categoryNode = category.id;
+	}
 	const flowMode = $derived(controls.flows.length === 1 ? controls.flows[0] : 'both');
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
 	let search = $state('');
@@ -201,7 +224,8 @@
 		if (groupBy !== 'category' && key in ownIcons) return ownIcons[key];
 		if (groupBy === 'account') return accounts.find((a) => a.id === key)?.logo;
 		if (groupBy === 'bank') return accounts.find((a) => a.bank === key && a.logo)?.logo;
-		const category = groupBy === 'category' ? categories.find((c) => c.name === key) : undefined;
+		const category =
+			groupBy === 'category' ? categories.find((c) => c.name === ownerOf(key)) : undefined;
 		return category && 'iconUrl' in category && typeof category.iconUrl === 'string'
 			? category.iconUrl
 			: undefined;
@@ -530,6 +554,28 @@
 
 		<Select.Root
 			type="single"
+			disabled={groupBy !== 'category' || !parents.length}
+			value={drillPath.at(-1)?.id ?? TOP}
+			onValueChange={(v) => (controls.categoryNode = v === TOP ? '' : v)}
+		>
+			<Select.Trigger
+				class="min-h-9 max-w-64"
+				aria-label="Category breakdown"
+				title="Show one category's breakdown"
+			>
+				<IconHierarchy2 size={16} class="text-muted-foreground" />
+				<span class="truncate">{drillPath.at(-1)?.name ?? 'All categories'}</span>
+			</Select.Trigger>
+			<Select.Content class="max-h-96">
+				<Select.Item value={TOP} label="All categories" />
+				{#each parents as parent (parent.id)}
+					<Select.Item value={parent.id} label={parent.label} />
+				{/each}
+			</Select.Content>
+		</Select.Root>
+
+		<Select.Root
+			type="single"
 			disabled={controls.presentation === 'overview'}
 			value={controls.kind}
 			onValueChange={(v) => (controls.kind = v as 'area' | 'bar' | 'line')}
@@ -707,6 +753,34 @@
 			onchange={setDates}
 		/>
 	{/if}
+	{#if groupBy === 'category' && drillPath.length}
+		<nav aria-label="Category breadcrumb" class="flex flex-wrap items-center gap-1 text-sm">
+			<Button
+				variant="outline"
+				size="sm"
+				class="min-h-9"
+				onclick={() => (controls.categoryNode = drillPath.at(-2)?.id ?? '')}
+				><IconArrowLeft size={16} />Back</Button
+			>
+			<button
+				type="button"
+				class="min-h-9 rounded px-1.5 text-muted-foreground hover:text-foreground"
+				onclick={() => (controls.categoryNode = '')}>All categories</button
+			>
+			{#each drillPath as crumb, i (crumb.id)}
+				<IconChevronRight size={14} class="text-muted-foreground" aria-hidden="true" />
+				{#if i === drillPath.length - 1}
+					<span class="px-1.5 font-medium" aria-current="page">{crumb.name}</span>
+				{:else}
+					<button
+						type="button"
+						class="min-h-9 rounded px-1.5 text-muted-foreground hover:text-foreground"
+						onclick={() => (controls.categoryNode = crumb.id)}>{crumb.name}</button
+					>
+				{/if}
+			{/each}
+		</nav>
+	{/if}
 	{#if controls.presentation === 'overview'}
 		<section
 			aria-label={view.title}
@@ -747,6 +821,13 @@
 								viewState.dateEnd
 							)}</span
 						>
+						{#if view.drill.drillable.includes(row.key)}<button
+								type="button"
+								class="-m-2 ml-auto flex size-9 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+								aria-label={`Show the ${labelFor(row.key)} breakdown`}
+								title={`Show the ${labelFor(row.key)} breakdown`}
+								onclick={() => drill(row.key)}><IconChevronRight size={16} /></button
+							>{/if}
 					</div>
 					<div class="text-lg font-semibold tabular-nums">
 						{row.value === null ? 'Unavailable' : money(row.value)}
@@ -780,7 +861,9 @@
 			{iconFor}
 			{iconComponent}
 			legendKeys={view.keys}
-			slotFor={(key) => paletteKeys.indexOf(key)}
+			slotFor={(key) => paletteKeys.indexOf(groupBy === 'category' ? ownerOf(key) : key)}
+			drillable={view.drill.drillable}
+			onDrill={drill}
 			hidden={view.hidden}
 			applicable={view.applicable}
 			onToggle={toggleSeries}

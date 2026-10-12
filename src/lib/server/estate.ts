@@ -43,7 +43,7 @@ export const COLUMNS: Record<string, string[]> = {
 	],
 	overlay: ['id', 'source', 'source_id', 'category', 'internal', 'excluded', 'deleted_at'],
 	shares: ['id', 'source', 'source_id', 'date', 'amount', 'category', 'deleted_at'],
-	categories: ['id', 'name', 'kind', 'icon', 'sort', 'deleted_at'],
+	categories: ['id', 'name', 'kind', 'icon', 'sort', 'parent_id', 'deleted_at'],
 	scrape_runs: [
 		'id',
 		'source',

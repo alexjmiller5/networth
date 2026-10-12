@@ -148,8 +148,16 @@ protects the site and every API route.
   selected dates. Default to 90D only when no valid preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
   and Screentime. Do not write filters into the URL or restore them from it.
-- Use the soma catalog for category names, kinds, and icons. Do not
+- Use the soma catalog for category names, kinds, icons and parents. Do not
   encode the owner's taxonomy or transaction data in this repository.
+- Category grouping follows the catalog tree (`categories.parent_id`, one
+  parent, any depth; `categoryTree.ts`). The top level shows root categories
+  with every descendant rolled up; the breakdown lens, legend and Overview
+  chevrons and a click on a bar open a parent (persisted `categoryNode`, a
+  catalog id; an unknown or childless node falls back to the top level), with
+  Back and a breadcrumb to return. A parent's own rows chart as
+  `<Name> (other)` in its parent's color. Each row keeps one category, so the
+  breakdown always sums to the parent's total.
 - Unit tests live beside the code. Endpoint tests cover credential isolation
   and malformed upstream data against `fake-hub.ts` (an in-memory hub speaking
   the cursor and pull routes); financial tests cover shares, refunds, and

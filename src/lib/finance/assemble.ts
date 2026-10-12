@@ -162,7 +162,8 @@ export function assemble(t: EstateTables): Estate {
 				name: str(r.name),
 				kind: str(r.kind) as CategoryKind,
 				icon: str(r.icon),
-				sort: num(r.sort)
+				sort: num(r.sort),
+				...(r.parent_id == null ? {} : { parentId: str(r.parent_id) })
 			};
 		})
 		.sort((a, b) => a.sort - b.sort);

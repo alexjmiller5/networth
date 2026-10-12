@@ -34,6 +34,8 @@ export interface Category {
 	/** Optional API enrichment for rendering the catalog icon. */
 	iconUrl?: string;
 	sort: number;
+	/** The catalog category (id) this one rolls up into; absent at the top level. */
+	parentId?: string;
 }
 
 export interface AccountCoverage {

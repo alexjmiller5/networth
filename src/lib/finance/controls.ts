@@ -1,6 +1,7 @@
 import type { Account, AccountCoverage, AssetClass, Category, GroupBy, Txn } from './types';
 import type { AccountValuation } from './valuation';
 import { addDays, clampRange, getPresetRange, PRESET_LABELS, type PresetLabel } from './presets';
+import { categoryTree, drillKey, levelKeys, lineage } from './categoryTree';
 import {
 	accumulate,
 	accountGroup,
@@ -36,6 +37,9 @@ export interface Controls {
 	flows: ('spending' | 'income')[];
 	cumulativeChoice: boolean | null;
 	hidden: Record<GroupBy, string[]>;
+	/** Open category in the category drill-down ('' = top level): a catalog id,
+	 * checked against the live tree when the view is built. */
+	categoryNode: string;
 }
 const record = (v: unknown): Record<string, unknown> =>
 	v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -138,7 +142,8 @@ export function readControls(
 		kind: choice(saved.kind, ['bar', 'area', 'line'], 'bar'),
 		flows,
 		cumulativeChoice: typeof saved.cumulativeChoice === 'boolean' ? saved.cumulativeChoice : null,
-		hidden
+		hidden,
+		categoryNode: typeof saved.categoryNode === 'string' ? saved.categoryNode : ''
 	};
 }
 
@@ -197,8 +202,13 @@ export function buildView(
 	const isFlow = state.measure === 'activity' || groupBy === 'category';
 	const cumulative = state.presentation === 'overview' || (state.cumulativeChoice ?? !isFlow);
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
+	// Grouped by category, rows roll up to the open node's children (top level: roots).
+	const tree = categoryTree(categories);
+	const node =
+		groupBy === 'category' && tree.children.has(state.categoryNode) ? state.categoryNode : '';
+	const path = node ? lineage(tree, node) : [];
 	const keyOf = (t: Txn) => {
-		if (groupBy === 'category') return t.category;
+		if (groupBy === 'category') return t.category && drillKey(tree, node, t.category);
 		if (t.standalone) return t.fundedBy ? REWARDS_PAID : FRIEND_PAID;
 		const account = accountOf.get(t.account_id ?? '');
 		return account ? accountGroup(account, groupBy) : undefined;
@@ -239,9 +249,11 @@ export function buildView(
 	}
 	const registry =
 		groupBy === 'category'
-			? [...categories]
-					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
-					.map((c) => c.name)
+			? levelKeys(
+					tree,
+					node,
+					new Set(flowPieces(txns).flatMap((t) => (t.category ? [t.category] : [])))
+				)
 			: [
 					...new Set(
 						[...accounts]
@@ -318,7 +330,7 @@ export function buildView(
 			v.carried[i]
 		);
 	});
-	const title = !isFlow
+	const flowTitle = !isFlow
 		? cumulative
 			? carried
 				? 'Balance subtotal with carried NAV'
@@ -331,6 +343,11 @@ export function buildView(
 			: mode === 'income'
 				? 'Income'
 				: 'Net flow';
+	const title = path.length ? `${flowTitle} · ${path.map((c) => c.name).join(' › ')}` : flowTitle;
+	const drillable = keys.filter((k) => {
+		const c = tree.byName.get(k);
+		return !!c && tree.children.has(c.id);
+	});
 	const uncategorized = flowPieces(txns).filter((t) => {
 		if (t.category || t.date < start || t.date > end || t.categoryKind === 'transfer') return false;
 		const kind =
@@ -355,7 +372,8 @@ export function buildView(
 		title,
 		uncategorized,
 		summary,
-		accountIds: accounts.map((a) => a.id)
+		accountIds: accounts.map((a) => a.id),
+		drill: { path, drillable: groupBy === 'category' ? drillable : [] }
 	};
 }
 
