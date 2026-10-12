@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { dayNumber, dateString, dateViewport, panViewport, moveSelection } from './date-viewport';
+import {
+	dayNumber,
+	dateString,
+	dateViewport,
+	panViewport,
+	moveSelection,
+	windowLabel
+} from './date-viewport';
+import { getPresetRange } from './presets';
 
 describe('bounded calendar viewport', () => {
-	it('starts at the latest 90-day span regardless of archive size', () => {
+	it('starts at the latest 90 calendar days regardless of archive size', () => {
 		expect(dateViewport('2000-01-01', '2026-10-06')).toEqual({
-			start: '2026-07-08',
+			start: '2026-07-09',
 			end: '2026-10-06'
 		});
+	});
+	it('shows exactly the 90D preset window, so the track label agrees with it', () => {
+		expect(dateViewport('2000-01-01', '2026-10-12')).toEqual(
+			getPresetRange('90D', '2000-01-01', '2026-10-12')
+		);
 	});
 	it('clamps short histories and anchors a restored historical selection', () => {
 		expect(dateViewport('2026-10-01', '2026-10-06')).toEqual({
@@ -14,15 +27,15 @@ describe('bounded calendar viewport', () => {
 			end: '2026-10-06'
 		});
 		expect(dateViewport('2020-01-01', '2026-10-06', '2024-04-01')).toEqual({
-			start: '2024-01-02',
+			start: '2024-01-03',
 			end: '2024-04-01'
 		});
 	});
 	it('pans without shrinking at either archive boundary', () => {
-		const view = { start: '2026-07-08', end: '2026-10-06' };
+		const view = { start: '2026-07-09', end: '2026-10-06' };
 		expect(panViewport(view, -30, '2026-07-01', '2026-10-06')).toEqual({
 			start: '2026-07-01',
-			end: '2026-09-29'
+			end: '2026-09-28'
 		});
 		expect(panViewport(view, 30, '2020-01-01', '2026-10-06')).toEqual(view);
 	});
@@ -41,5 +54,15 @@ describe('bounded calendar viewport', () => {
 			start: '2026-10-06',
 			end: '2026-10-06'
 		});
+	});
+});
+
+describe('window labels', () => {
+	it('names a window compactly, with the year once when both ends share it', () => {
+		expect(windowLabel({ start: '2026-07-15', end: '2026-10-12' })).toBe('Jul 15 - Oct 12, 2026');
+		expect(windowLabel({ start: '2025-10-13', end: '2026-10-12' })).toBe(
+			'Oct 13, 2025 - Oct 12, 2026'
+		);
+		expect(windowLabel({ start: '2026-10-12', end: '2026-10-12' })).toBe('Oct 12, 2026');
 	});
 });

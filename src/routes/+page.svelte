@@ -369,7 +369,9 @@
 				disabled={controls.hideAmounts || !markersLoaded}
 				title={controls.hideAmounts
 					? 'Show amounts to edit marker text'
-					: 'Add or edit event markers'}
+					: markersLoaded
+						? 'Add or edit event markers'
+						: 'Loading markers'}
 				onclick={() => (markersOpen = true)}><IconFlag size={16} />Markers</Button
 			>
 			<Button

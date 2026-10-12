@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import IconArrowNarrowLeft from '@tabler/icons-svelte/icons/arrow-narrow-left';
+	import IconArrowNarrowRight from '@tabler/icons-svelte/icons/arrow-narrow-right';
 	import {
 		dateViewport,
 		dayNumber,
 		dateString,
 		panViewport,
 		moveSelection,
+		windowLabel,
 		type DateWindow
 	} from '$lib/finance/date-viewport';
 
@@ -34,6 +37,11 @@
 		span
 			? Math.max(0, Math.min(100, ((dayNumber(date) - dayNumber(viewport.start)) / span) * 100))
 			: 50;
+	// A selected bound beyond the visible track is drawn at the track's edge; say so.
+	const clipped = $derived({
+		start: !!viewport.start && start < viewport.start,
+		end: !!viewport.end && end > viewport.end
+	});
 	const label = (date: string): string =>
 		new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
 			month: 'short',
@@ -178,7 +186,17 @@
 
 <div class="space-y-1">
 	<div class="flex justify-between text-xs text-muted-foreground tabular-nums">
-		<span>{label(start)}</span><span>{label(end)}</span>
+		<span
+			class="flex items-center gap-1"
+			title={clipped.start ? 'Starts before the visible track' : undefined}
+			>{#if clipped.start}<IconArrowNarrowLeft size={14} aria-hidden="true" />{/if}{label(
+				start
+			)}</span
+		><span
+			class="flex items-center gap-1"
+			title={clipped.end ? 'Ends after the visible track' : undefined}
+			>{label(end)}{#if clipped.end}<IconArrowNarrowRight size={14} aria-hidden="true" />{/if}</span
+		>
 	</div>
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -223,6 +241,7 @@
 				>
 					<span
 						class="pointer-events-none h-4 w-4 rounded-full border-2 border-primary bg-background"
+						class:border-dashed={clipped[bound]}
 					></span>
 				</button>
 			{/each}
@@ -239,9 +258,7 @@
 			disabled={viewport.start <= min}
 			onclick={() => pan(-30)}>Earlier</button
 		>
-		<span aria-live="polite"
-			>{viewport.start ? `${label(viewport.start)} - ${label(viewport.end)}` : ''}</span
-		>
+		<span aria-live="polite">{viewport.start ? `Track: ${windowLabel(viewport)}` : ''}</span>
 		<button
 			type="button"
 			class="min-h-9 rounded-md border px-2 disabled:opacity-40"
