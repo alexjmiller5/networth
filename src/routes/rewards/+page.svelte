@@ -638,28 +638,6 @@
 				><IconRefresh size={16} />{loading ? 'Reloading' : 'Reload'}</Button
 			>
 		</div>
-		<div class="flex flex-wrap items-center gap-2 text-xs">
-			<label class="flex items-center gap-2"
-				>From <input
-					class="min-h-9 rounded-md border bg-background px-2"
-					type="date"
-					min={minDate}
-					max={range.end}
-					value={range.start}
-					onchange={(e) => setDates(e.currentTarget.value, range.end)}
-				/></label
-			>
-			<label class="flex items-center gap-2"
-				>To <input
-					class="min-h-9 rounded-md border bg-background px-2"
-					type="date"
-					min={range.start}
-					max={maxDate}
-					value={range.end}
-					onchange={(e) => setDates(range.start, e.currentTarget.value)}
-				/></label
-			>
-		</div>
 		<RangeSlider
 			min={minDate}
 			max={maxDate}

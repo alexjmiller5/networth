@@ -644,28 +644,6 @@
 		</DropdownMenu.Root>
 	</div>
 
-	<div class="flex flex-wrap items-center gap-2 text-xs">
-		<label class="flex items-center gap-2"
-			>From <input
-				class="min-h-9 rounded-md border bg-background px-2"
-				type="date"
-				min={minDate}
-				max={viewState.dateEnd}
-				value={viewState.dateStart}
-				onchange={(e) => setDates(e.currentTarget.value, viewState.dateEnd)}
-			/></label
-		>
-		<label class="flex items-center gap-2"
-			>To <input
-				class="min-h-9 rounded-md border bg-background px-2"
-				type="date"
-				min={viewState.dateStart}
-				max={maxDate}
-				value={viewState.dateEnd}
-				onchange={(e) => setDates(viewState.dateStart, e.currentTarget.value)}
-			/></label
-		>
-	</div>
 	<RangeSlider
 		min={minDate}
 		max={maxDate}
