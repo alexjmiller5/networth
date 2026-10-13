@@ -4,6 +4,9 @@
 	// click the track to jump the nearest handle. Touch gets bigger targets.
 	// Restyled from that app's palette to this one's theme tokens.
 	import { onMount, onDestroy } from 'svelte';
+	import { parseDate, type DateValue } from '@internationalized/date';
+	import { Calendar } from '$lib/components/ui/calendar';
+	import * as Popover from '$lib/components/ui/popover';
 	import { addDays } from '$lib/finance/presets';
 
 	interface Props {
@@ -157,19 +160,21 @@
 		return handle === 'start' ? [0, endOffset] : [startOffset, totalDays];
 	}
 
-	// Clamps the offset into the handle's limits and returns the date it landed on.
-	function moveHandle(handle: 'start' | 'end', offset: number): string {
+	// Clamps the offset into the handle's limits.
+	function moveHandle(handle: 'start' | 'end', offset: number): void {
 		const [lower, upper] = limits(handle);
 		const value = offsetToDate(Math.max(lower, Math.min(upper, offset)));
 		if (handle === 'start') onchange(value, end);
 		else onchange(start, value);
-		return value;
 	}
 
-	// A typed or cleared date can fall outside the calendar's bounds: clamp it like a key press.
-	function pickDate(input: HTMLInputElement, handle: 'start' | 'end'): void {
-		const current = handle === 'start' ? start : end;
-		input.value = input.value ? moveHandle(handle, dateToOffset(input.value)) : current;
+	// Each selected date opens a calendar limited to the dates its handle may take.
+	let pickerOpen = $state({ start: false, end: false });
+
+	function pickDate(handle: 'start' | 'end', day: DateValue | undefined): void {
+		if (!day) return;
+		moveHandle(handle, dateToOffset(day.toString()));
+		pickerOpen[handle] = false;
 	}
 
 	function handleKey(e: KeyboardEvent, handle: 'start' | 'end'): void {
@@ -225,29 +230,32 @@
 </script>
 
 <div class="space-y-1">
-	<!-- Selected dates: click one to pick it from the browser's calendar -->
+	<!-- Selected dates: click one to pick it from a calendar -->
 	<div
 		class="flex justify-between text-[11px] tabular-nums transition-colors duration-150 {dragging
 			? 'text-primary'
 			: 'text-muted-foreground'}"
 	>
 		{#each HANDLES as handle (handle)}
-			<label
-				class="relative cursor-pointer overflow-hidden rounded py-1 underline decoration-dotted underline-offset-2 focus-within:ring-1 focus-within:ring-ring hover:text-foreground"
-			>
-				{formatLabel(handle === 'start' ? start : end)}
-				<!-- 16px text keeps iOS from zooming the page when the picker opens. -->
-				<input
-					type="date"
-					class="absolute inset-0 cursor-pointer text-base opacity-0"
+			<Popover.Root bind:open={pickerOpen[handle]}>
+				<Popover.Trigger
+					class="cursor-pointer rounded py-1 underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
 					aria-label="Pick {handle} date"
-					min={offsetToDate(limits(handle)[0])}
-					max={offsetToDate(limits(handle)[1])}
-					value={handle === 'start' ? start : end}
-					onclick={(e) => e.currentTarget.showPicker?.()}
-					onchange={(e) => pickDate(e.currentTarget, handle)}
-				/>
-			</label>
+				>
+					{formatLabel(handle === 'start' ? start : end)}
+				</Popover.Trigger>
+				<Popover.Content class="w-auto p-0" align={handle}>
+					<Calendar
+						type="single"
+						value={parseDate(handle === 'start' ? start : end)}
+						minValue={parseDate(offsetToDate(limits(handle)[0]))}
+						maxValue={parseDate(offsetToDate(limits(handle)[1]))}
+						captionLayout="dropdown"
+						preventDeselect
+						onValueChange={(day) => pickDate(handle, day)}
+					/>
+				</Popover.Content>
+			</Popover.Root>
 		{/each}
 	</div>
 
