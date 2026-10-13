@@ -21,6 +21,13 @@
 		<!-- matches --background tokens in layout.css (white / zinc-950) -->
 		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
 		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b" />
+		<script>
+			// A new deploy's service worker takes control right after installing: show it.
+			if (navigator.serviceWorker?.controller)
+				navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), {
+					once: true
+				});
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

@@ -454,8 +454,9 @@ deploys target his Cloudflare account.
 ## Offline startup
 
 - The production service worker caches the home document and bundled assets per
-  build. Updates activate after existing clients close; activation prunes only old
-  shell caches. Never intercept API mutations or Cloudflare Access routes.
+  build. A new build's worker skips waiting and `app.html` reloads an already
+  controlled page once on `controllerchange`, so a deploy shows on the next open
+  or reload; activation prunes only old shell caches. Never intercept API mutations or Cloudflare Access routes.
 - `readDashboard` stores successful JSON GETs in device-local CacheStorage. Offline
   reads use the saved snapshot immediately; weak connections get 750 ms before
   fallback. Finance cold reads and explicit refreshes allow 45 seconds for the

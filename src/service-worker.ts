@@ -31,6 +31,8 @@ worker.addEventListener('install', (event) => {
 				})
 			);
 			await cache.put('/', shell);
+			// Take over at once; app.html reloads an open page onto the new build.
+			await worker.skipWaiting();
 		})()
 	);
 });

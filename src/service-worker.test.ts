@@ -3,6 +3,7 @@ vi.mock('$service-worker', () => ({ build: ['/app.js'], files: ['/icon.png'], ve
 const handlers = new Map<string, (event: any) => void>();
 const stored = new Map<string, Response>();
 const deleted: string[] = [];
+let skippedWaiting = false;
 const cache = {
 	addAll: async () => {},
 	put: async (key: string, response: Response) => {
@@ -22,12 +23,16 @@ async function lifecycle(kind: string) {
 beforeEach(async () => {
 	stored.clear();
 	deleted.length = 0;
+	skippedWaiting = false;
 	handlers.clear();
 	vi.resetModules();
 	vi.stubGlobal('self', {
 		location: new URL('https://dashboard.example/service-worker.js'),
 		addEventListener: (kind: string, handler: any) => handlers.set(kind, handler),
-		clients: { claim: async () => {} }
+		clients: { claim: async () => {} },
+		skipWaiting: async () => {
+			skippedWaiting = true;
+		}
 	});
 	vi.stubGlobal('caches', {
 		open: async () => cache,
@@ -64,6 +69,10 @@ it('installs the app document and serves it on an offline home navigation', asyn
 		}
 	});
 	expect(await (await result).text()).toContain('dashboard-shell');
+});
+it('takes over from the previous build once installed, so a deploy shows on the next load', async () => {
+	await lifecycle('install');
+	expect(skippedWaiting).toBe(true);
 });
 it('rejects a login page without replacing the dashboard shell', async () => {
 	vi.stubGlobal(
