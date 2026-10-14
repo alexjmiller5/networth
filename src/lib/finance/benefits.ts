@@ -26,7 +26,7 @@ export interface BenefitPlan {
 	provider: string;
 	native_plan_id: string | null;
 	name: string;
-	kind: 'fsa' | 'retiree_health';
+	kind: 'fsa' | 'retiree_health' | 'lsa';
 	currency: string;
 	status: 'active' | 'inactive' | 'unknown';
 	years: { year: number | null; observations: BenefitObservation[] }[];
@@ -80,7 +80,7 @@ export function assembleBenefits(planRows: Row[], snapshotRows: Row[]): Benefits
 			provider: text(row.provider),
 			native_plan_id: optionalText(row.native_plan_id),
 			name: text(row.name),
-			kind: oneOf(row.kind, ['fsa', 'retiree_health']),
+			kind: oneOf(row.kind, ['fsa', 'retiree_health', 'lsa']),
 			currency: currency(row.currency),
 			status: oneOf(row.status, ['active', 'inactive', 'unknown']),
 			years: []

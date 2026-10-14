@@ -28,6 +28,8 @@ export interface EstateTables {
 	points: HubRow[];
 	txns: Record<string, HubRow[]>;
 	/** Noncash refundable assets, their dated principal events and evidence_of edges. */
+	benefit_plans?: HubRow[];
+	benefit_transactions?: HubRow[];
 	assets?: HubRow[];
 	asset_events?: HubRow[];
 	asset_evidence?: HubRow[];
@@ -221,16 +223,34 @@ export function assemble(t: EstateTables): Estate {
 	}
 	const txns: Txn[] = [];
 	const txnByKey = new Map<string, Txn>();
-	for (const [source, rows] of Object.entries(t.txns)) {
+	const plans = new Map((t.benefit_plans ?? []).filter(live).map((p) => [id(p.id), p]));
+	const ledgers = { ...t.txns };
+	if (t.benefit_transactions) ledgers.benefits = t.benefit_transactions;
+	for (const [source, rows] of Object.entries(ledgers)) {
 		for (const r of rows.filter(live)) {
+			const benefit = source === 'benefits';
+			if (
+				benefit &&
+				(!['card_purchase', 'card_refund'].includes(str(r.kind)) || r.status !== 'settled')
+			)
+				continue;
+			const plan = benefit ? plans.get(str(r.plan_id)) : undefined;
 			const a = accountOf.get(str(r.account_id));
-			if (!a || a.source !== source) throw new Error('Invalid finance account reference');
+			if (
+				benefit
+					? !plan || plan.currency !== r.currency || r.currency !== 'USD'
+					: !a || a.source !== source
+			)
+				throw new Error('Invalid finance account or benefit reference');
 			const key = `${source}:${id(r.id)}`;
 			if (txnByKey.has(key)) throw new Error('Duplicate finance transaction');
 			const o = overlay.get(key);
 			const amount = num(r.amount);
 			const synthetic = flag(r.synthetic);
-			let balanceAmount: number | null = assetClass(a) === 'investments' ? null : amount;
+			let balanceAmount: number | null =
+				benefit || assetClass(a!) === 'investments' ? null : amount;
+			if (benefit && (amount === 0 || (r.kind === 'card_purchase' ? amount >= 0 : amount <= 0)))
+				throw new Error('Invalid benefit transaction sign');
 			if (source === 'venmo' && !synthetic) {
 				const lines = statements.get(str(r.id)) ?? [];
 				// The stored link is authoritative: statement amounts can differ from
@@ -260,14 +280,15 @@ export function assemble(t: EstateTables): Estate {
 			const txn: Txn = {
 				source,
 				source_id: str(r.id),
-				account_id: a.id,
+				account_id: a?.id ?? null,
 				date: date(r.date),
 				amount,
 				balanceAmount,
 				synthetic,
 				internal: flag(o?.internal),
 				excluded: flag(o?.excluded),
-				standalone: false
+				standalone: benefit,
+				...(benefit ? { benefitPaid: true } : {})
 			};
 			if (o?.category != null) {
 				txn.category = str(o.category);
@@ -277,6 +298,8 @@ export function assemble(t: EstateTables): Estate {
 			if (r.qty != null) txn.qty = num(r.qty);
 			if (r.ticker != null) txn.ticker = str(r.ticker);
 			const sh = shares.get(key);
+			// ponytail: fully owned benefit expenses; add allocation rules when a benefit purchase is split.
+			if (benefit && sh) throw new Error('Benefit purchase splits are unsupported');
 			if (sh) {
 				if (o?.category != null) throw new Error('Finance share and parent both have a category');
 				if (
@@ -294,6 +317,18 @@ export function assemble(t: EstateTables): Estate {
 			}
 			txns.push(txn);
 			txnByKey.set(key, txn);
+			if (benefit) {
+				const income = categories.find((c) => c.id === plan!.income_category_id);
+				if (!income || income.kind !== 'income') throw new Error('Invalid benefit income category');
+				txns.push({
+					...txn,
+					source_id: 'realized:' + str(r.id),
+					amount: -amount,
+					category: income.name,
+					categoryKind: 'income',
+					shares: undefined
+				});
+			}
 		}
 	}
 	if (shares.size) throw new Error('Finance share parent is missing');

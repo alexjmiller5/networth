@@ -190,6 +190,17 @@ export const COLUMNS: Record<string, string[]> = {
 		'kind',
 		'currency',
 		'status',
+		'income_category_id',
+		'deleted_at'
+	],
+	benefit_transactions: [
+		'id',
+		'plan_id',
+		'date',
+		'amount',
+		'currency',
+		'kind',
+		'status',
 		'deleted_at'
 	],
 	benefit_snapshots: [

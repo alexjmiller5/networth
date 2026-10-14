@@ -1050,3 +1050,98 @@ describe('points-paid consumption', () => {
 		}
 	});
 });
+
+it('counts settled benefit purchases with equal realized income and reverses refunds without assets', () => {
+	const input = {
+		...tables,
+		accounts: [],
+		txns: {},
+		overlay: [
+			{ id: 'benefits:purchase', source: 'benefits', source_id: 'purchase', category: 'Groceries' },
+			{ id: 'benefits:refund', source: 'benefits', source_id: 'refund', category: 'Groceries' }
+		],
+		shares: [],
+		scrape_runs: [],
+		benefit_plans: [{ id: 'plan', currency: 'USD', income_category_id: 'benefit-income' }],
+		categories: [
+			{ id: 'groceries', name: 'Groceries', kind: 'spending', icon: 'tabler:basket', sort: 1 },
+			{
+				id: 'benefit-income',
+				name: 'Employer benefit',
+				kind: 'income',
+				icon: 'tabler:wallet',
+				sort: 2
+			}
+		],
+		benefit_transactions: [
+			{
+				id: 'purchase',
+				plan_id: 'plan',
+				date: '2026-01-01',
+				amount: -25,
+				currency: 'USD',
+				kind: 'card_purchase',
+				status: 'settled'
+			},
+			{
+				id: 'refund',
+				plan_id: 'plan',
+				date: '2026-01-02',
+				amount: 5,
+				currency: 'USD',
+				kind: 'card_refund',
+				status: 'settled'
+			},
+			{
+				id: 'allowance',
+				plan_id: 'plan',
+				date: '2026-01-01',
+				amount: 200,
+				currency: 'USD',
+				kind: 'allowance',
+				status: 'settled'
+			},
+			{
+				id: 'payout',
+				plan_id: 'plan',
+				date: '2026-01-02',
+				amount: -50,
+				currency: 'USD',
+				kind: 'reimbursement',
+				status: 'settled'
+			},
+			{
+				id: 'declined',
+				plan_id: 'plan',
+				date: '2026-01-02',
+				amount: -10,
+				currency: 'USD',
+				kind: 'card_purchase',
+				status: 'Declined'
+			}
+		]
+	};
+	const model = assemble(input);
+	for (const flag of ['internal', 'excluded'] as const) {
+		const flagged = assemble({
+			...input,
+			overlay: input.overlay.map((o) => ({ ...o, [flag]: 1 }))
+		});
+		expect(flagged.txns.every((t) => t[flag])).toBe(true);
+	}
+	expect(() => assemble({ ...input, benefit_plans: [] })).toThrow();
+	expect(() =>
+		assemble({
+			...input,
+			benefit_plans: [{ id: 'plan', currency: 'USD', income_category_id: 'groceries' }]
+		})
+	).toThrow();
+	expect(model.accounts).toEqual([]);
+	expect(model.txns.map((t) => [t.amount, t.categoryKind])).toEqual([
+		[-25, 'spending'],
+		[25, 'income'],
+		[5, 'spending'],
+		[-5, 'income']
+	]);
+	expect(model.txns.every((t) => t.account_id === null && t.balanceAmount === null)).toBe(true);
+});

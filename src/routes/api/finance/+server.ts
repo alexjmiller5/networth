@@ -21,7 +21,9 @@ const TABLES = [
 	'asset_events',
 	'reward_components',
 	'reward_events',
-	'redemption_valuations'
+	'redemption_valuations',
+	'benefit_plans',
+	'benefit_transactions'
 ];
 // Native NAV and unit observations, read only when prices can use them.
 const NATIVE = ['investment_instruments', 'investment_observations'];
@@ -64,6 +66,8 @@ export async function GET({ platform, fetch }: Parameters<RequestHandler>[0]) {
 			assets: rows.assets,
 			asset_events: rows.asset_events,
 			asset_evidence: rows.asset_evidence,
+			benefit_plans: rows.benefit_plans,
+			benefit_transactions: rows.benefit_transactions,
 			reward_components: rows.reward_components,
 			reward_events: rows.reward_events,
 			redemption_valuations: rows.redemption_valuations,

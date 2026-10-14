@@ -50,6 +50,7 @@ it('reads only fixed tables and columns with the existing server credential and 
 		'kind',
 		'currency',
 		'status',
+		'income_category_id',
 		'deleted_at',
 		'hub_at'
 	]);

@@ -187,3 +187,12 @@ describe('benefit amount presentation and shared privacy preference', () => {
 		expect(() => writeBenefitPrivacy(undefined, true)).not.toThrow();
 	});
 });
+
+it('reads a conditional lifestyle benefit without inventing vested assets', () => {
+	const model = assembleBenefits(
+		[plan({ kind: 'lsa' })],
+		[observation({ annual_election: null, available_benefit: 0 })]
+	);
+	expect(model.plans[0].kind).toBe('lsa');
+	expect(model.plans[0].years[0].observations[0].vested_balance).toBeNull();
+});

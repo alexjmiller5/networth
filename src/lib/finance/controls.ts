@@ -35,6 +35,7 @@ export const STORAGE_KEY = 'networth-ui';
 export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export const REWARDS_PAID = 'rewards-paid';
+export const BENEFITS_PAID = 'benefits-paid';
 export const ASSET_CLASSES: AssetClass[] = ['cash', 'investments', 'deposits'];
 export const ACCOUNT_STATUSES = ['open', 'closed'] as const;
 export const BALANCE_SOURCES = ['accounts', 'rewards'] as const;
@@ -287,7 +288,7 @@ export function buildView(
 		t.standalone
 			? state.accountStatuses.includes('open') &&
 				state.assetClassFilter.includes('cash') &&
-				state.balanceSources.includes(t.fundedBy ? 'rewards' : 'accounts')
+				state.balanceSources.includes(t.fundedBy || t.benefitPaid ? 'rewards' : 'accounts')
 			: ids.has(t.account_id ?? '')
 	);
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
@@ -310,7 +311,8 @@ export function buildView(
 	const path = node ? lineage(tree, node) : [];
 	const keyOf = (t: Txn) => {
 		if (groupBy === 'category') return t.category && drillKey(tree, node, t.category);
-		if (t.standalone) return t.fundedBy ? REWARDS_PAID : FRIEND_PAID;
+		if (t.standalone)
+			return t.benefitPaid ? BENEFITS_PAID : t.fundedBy ? REWARDS_PAID : FRIEND_PAID;
 		const account = accountOf.get(t.account_id ?? '');
 		return account ? accountGroup(account, groupBy) : undefined;
 	};
@@ -367,8 +369,9 @@ export function buildView(
 					)
 				];
 	if (groupBy !== 'category') {
-		if (txns.some((t) => t.standalone && !t.fundedBy)) registry.push(FRIEND_PAID);
+		if (txns.some((t) => t.standalone && !t.fundedBy && !t.benefitPaid)) registry.push(FRIEND_PAID);
 		if (txns.some((t) => t.fundedBy)) registry.push(REWARDS_PAID);
+		if (txns.some((t) => t.benefitPaid)) registry.push(BENEFITS_PAID);
 	}
 	const keys = [
 		...new Set([

@@ -92,6 +92,8 @@ export interface Txn {
 	standalone?: boolean;
 	/** Native reward unit that paid for a standalone consumption row (a points-paid dinner), never cash. */
 	fundedBy?: string;
+	/** Employer-funded consumption or its realized income; never a monetary balance. */
+	benefitPaid?: boolean;
 	/** Signed principal of an unsplit row linked to a noncash asset; flows leave it out. */
 	principal?: number;
 }

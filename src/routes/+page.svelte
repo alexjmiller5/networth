@@ -28,6 +28,7 @@
 	import IconArrowsDownUp from '@tabler/icons-svelte/icons/arrows-down-up';
 	import arrowsDownUpSvg from '@tabler/icons/outline/arrows-down-up.svg?raw';
 	import giftSvg from '@tabler/icons/outline/gift.svg?raw';
+	import walletSvg from '@tabler/icons/outline/wallet.svg?raw';
 	import IconSum from '@tabler/icons-svelte/icons/sum';
 	import IconRefresh from '@tabler/icons-svelte/icons/refresh';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
@@ -61,6 +62,7 @@
 		FRIEND_PAID,
 		measureOf,
 		REWARDS_PAID,
+		BENEFITS_PAID,
 		pointsAt,
 		readControls,
 		setMeasure,
@@ -165,7 +167,15 @@
 			? [...categories]
 					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
 					.map((c) => c.name)
-			: [...new Set([...groupKeys(data.accounts), FRIEND_PAID, ...groupKeys(assets), REWARDS_PAID])]
+			: [
+					...new Set([
+						...groupKeys(data.accounts),
+						FRIEND_PAID,
+						...groupKeys(assets),
+						REWARDS_PAID,
+						BENEFITS_PAID
+					])
+				]
 	);
 	const drillPath = $derived(view.drill.path);
 	function drill(name: string): void {
@@ -219,6 +229,7 @@
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
 		if (key === FRIEND_PAID) return 'Friend-paid';
 		if (key === REWARDS_PAID) return 'Points-paid';
+		if (key === BENEFITS_PAID) return 'Benefit-paid';
 		if (groupBy === 'asset') return CLASS_LABELS[key as AssetClass] ?? key;
 		start = start < viewState.dateStart ? viewState.dateStart : start;
 		end = end > viewState.dateEnd ? viewState.dateEnd : end;
@@ -234,6 +245,7 @@
 	// Inline SVG data URLs so canvas legends and tooltips draw these icons without a request.
 	const ownIcons: Record<string, string> = {
 		[FRIEND_PAID]: `data:image/svg+xml,${encodeURIComponent(arrowsDownUpSvg)}`,
+		[BENEFITS_PAID]: `data:image/svg+xml,${encodeURIComponent(walletSvg)}`,
 		[REWARDS_PAID]: `data:image/svg+xml,${encodeURIComponent(giftSvg)}`
 	};
 	function iconFor(key: string): string | undefined {
@@ -590,7 +602,7 @@
 				<p class="px-2 py-1 text-xs text-muted-foreground">
 					Cash includes balances outside investment accounts, net of credit-card debt. Deposits are
 					refundable principal someone else holds; they count in net worth but are not spendable.
-					Wallets & rewards are stored-value balances, points-paid spending and points.
+					Wallets & rewards include stored-value balances, points and spending paid by rewards or benefits.
 				</p>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>

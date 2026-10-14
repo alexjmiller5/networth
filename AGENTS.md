@@ -39,6 +39,14 @@ protects the site and every API route.
   Shares, categories, exclusions, and stated balances never overwrite raw
   amounts. Stated balances are verification evidence only.
 - Synthetic openings and internal transfers affect balances, not spending.
+- Terminal native benefit activity lives in `benefit_transactions`, linked to
+  `benefit_plans`. A configured `income_category_id` projects settled card
+  purchases/refunds into accountless Benefit-paid expenses and equal opposite
+  earned-income lines. Allowance grants, declined/pending attempts and provider
+  cash payouts do not synthesize flows; bank reimbursements count on their bank
+  legs. Internal/excluded overlays hide both paired lines. Benefit groups and
+  splits are unsupported. Native benefit snapshots remain informational, never
+  custody balances or net-worth assets. Dollar projections require USD.
 - A redemption whose `redemption_valuations.category` is set is points-paid
   consumption: one account-less spending row (source `rewards`, `fundedBy` its
   native unit) worth the frozen `reward_value` on the redeem event's source date.
