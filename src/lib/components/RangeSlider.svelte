@@ -7,6 +7,7 @@
 	import { parseDate, type DateValue } from '@internationalized/date';
 	import { Calendar } from '$lib/components/ui/calendar';
 	import * as Popover from '$lib/components/ui/popover';
+	import IconCalendarWeek from '@tabler/icons-svelte/icons/calendar-week';
 	import { addDays } from '$lib/finance/presets';
 
 	interface Props {
@@ -230,7 +231,7 @@
 </script>
 
 <div class="space-y-1">
-	<!-- Selected dates: click one to pick it from a calendar -->
+	<!-- Selected dates as chips: click one to pick it from a calendar -->
 	<div
 		class="flex justify-between text-[11px] tabular-nums transition-colors duration-150 {dragging
 			? 'text-primary'
@@ -239,9 +240,10 @@
 		{#each HANDLES as handle (handle)}
 			<Popover.Root bind:open={pickerOpen[handle]}>
 				<Popover.Trigger
-					class="cursor-pointer rounded py-1 underline decoration-dotted underline-offset-2 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+					class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-foreground outline-none hover:border-ring/50 focus-visible:ring-1 focus-visible:ring-ring pointer-coarse:min-h-9"
 					aria-label="Pick {handle} date"
 				>
+					<IconCalendarWeek size={14} class="shrink-0 opacity-70" />
 					{formatLabel(handle === 'start' ? start : end)}
 				</Popover.Trigger>
 				<Popover.Content class="w-auto p-0" align={handle}>

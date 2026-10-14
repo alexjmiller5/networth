@@ -165,7 +165,7 @@ protects the site and every API route.
 - The date slider is Task Burndown's two-handle range over the whole data
   span: drag a handle, drag the filled span to slide the window, click the
   track to jump the nearest handle; arrow/Page/Home/End keys move a focused
-  handle; clicking either selected date opens a shadcn Calendar in a Popover,
+  handle; the selected dates are outline chips with a calendar icon, and clicking one opens a shadcn Calendar in a Popover,
   limited to the dates that handle may take (no separate From/To inputs). Calendar math is UTC (`addDays`). Default to 90D only when no valid
   preference exists.
 - Store control preferences in localStorage only, matching Task Burndown
