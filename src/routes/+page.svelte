@@ -602,7 +602,8 @@
 				<p class="px-2 py-1 text-xs text-muted-foreground">
 					Cash includes balances outside investment accounts, net of credit-card debt. Deposits are
 					refundable principal someone else holds; they count in net worth but are not spendable.
-					Wallets & rewards include stored-value balances, points and spending paid by rewards or benefits.
+					Wallets & rewards include stored-value balances, points and spending paid by rewards or
+					benefits.
 				</p>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
