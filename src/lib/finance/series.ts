@@ -13,7 +13,7 @@ export interface StackedSeries {
 	series: { key: string; data: (number | null)[] }[];
 }
 
-export type Bucket = 'day' | 'week' | 'month';
+export type Bucket = 'day' | 'week' | 'month' | 'year';
 
 /** Every YYYY-MM-DD from start to end inclusive (UTC arithmetic - dates are labels). */
 export function dateRange(start: string, end: string): string[] {
@@ -133,6 +133,7 @@ export function groupSeries(
 /** Week buckets anchor on their Monday, months on 'YYYY-MM-01'. */
 export function bucketLabel(date: string, bucket: Bucket): string {
 	if (bucket === 'day') return date;
+	if (bucket === 'year') return `${date.slice(0, 4)}-01-01`;
 	if (bucket === 'month') return `${date.slice(0, 7)}-01`;
 	const [y, m, d] = date.split('-').map(Number);
 	const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday

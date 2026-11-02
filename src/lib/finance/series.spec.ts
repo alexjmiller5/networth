@@ -362,3 +362,33 @@ describe('valued investment series', () => {
 		expect(bucketize(bank, 'week').series[0].data).toEqual([680]);
 	});
 });
+
+describe('yearly buckets', () => {
+	it('takes closing levels including unavailable year ends across partial years', () => {
+		expect(
+			bucketize(
+				{
+					dates: ['2025-12-30', '2025-12-31', '2026-01-01', '2026-06-01'],
+					series: [{ key: 'a', data: [10, null, 20, 30] }]
+				},
+				'year'
+			)
+		).toEqual({ dates: ['2025-01-01', '2026-01-01'], series: [{ key: 'a', data: [null, 30] }] });
+	});
+	it('sums selected-year flows, preserving refunds', () => {
+		const rows: Txn[] = [
+			{ account_id: 'a', date: '2025-12-31', amount: -5, category: 'food' },
+			{ account_id: 'a', date: '2026-01-01', amount: -30, category: 'food' },
+			{
+				account_id: 'a',
+				date: '2026-06-01',
+				amount: 10,
+				category: 'food',
+				categoryKind: 'spending'
+			}
+		];
+		expect(
+			flowSeries(rows, '2026-01-01', '2026-06-30', 'year', (t) => t.category, 'spending')
+		).toEqual({ dates: ['2026-01-01'], series: [{ key: 'food', data: [20] }] });
+	});
+});

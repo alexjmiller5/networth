@@ -82,3 +82,17 @@ describe('calendar markers', () => {
 		expect(assignLane([{ lane: 0, left: 10, right: 80 }], 90, 100)).toBe(0);
 	});
 });
+
+it('anchors point and range markers to yearly buckets', () => {
+	expect(markerBuckets({ date: '2030-06-15', title: 'Point' }, ['2030-01-01'], 'year')).toEqual({
+		start: 0,
+		end: 0
+	});
+	expect(
+		markerBuckets(
+			{ date: '2029-12-31', end: '2031-01-02', title: 'Range' },
+			['2030-01-01', '2031-01-01'],
+			'year'
+		)
+	).toEqual({ start: 0, end: 1 });
+});

@@ -154,6 +154,7 @@ protects the site and every API route.
   linked principal from that share's or row's flows, never raw balances, overlays
   or whole parents. Every event needs a live `evidence_of` edge; evidence keys stay
   server-side. Assets have no coverage row: they are evidenced, not reconciled.
+- Calendar buckets support daily, weekly, monthly and yearly views. Yearly levels take the closing value; flows sum only selected dates, and event markers anchor to their calendar year.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Money axis ticks are compact
   with the sign first (`-$1.5k`, `$800`). Show every category;

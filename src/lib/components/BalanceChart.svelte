@@ -240,6 +240,7 @@
 	const tooltipTitle = (items: { dataIndex: number }[]): string => {
 		const raw = data.dates[items[0]?.dataIndex ?? -1];
 		if (!raw) return '';
+		if (bucket === 'year') return dayjs(raw).format('YYYY');
 		if (bucket === 'month') return dayjs(raw).format('MMMM YYYY');
 		if (bucket === 'week') return `Week of ${dayjs(raw).format('MMM D, YYYY')}`;
 		return dayjs(raw).format('ddd, MMM D, YYYY');
@@ -355,9 +356,9 @@
 						grid: { display: false },
 						border: { color: chartTheme.gridline },
 						time: {
-							unit: bucket === 'month' ? 'month' : bucket === 'week' ? 'week' : 'day',
+							unit: bucket,
 							isoWeekday: 1,
-							displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' }
+							displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY', year: 'YYYY' }
 						},
 						ticks: {
 							color: chartTheme.mutedInk,
@@ -410,11 +411,13 @@
 								const key = data.series[item.datasetIndex]?.key;
 								const start = data.dates[item.dataIndex];
 								const end =
-									bucket === 'month'
-										? dayjs(start).endOf('month').format('YYYY-MM-DD')
-										: bucket === 'week'
-											? dayjs(start).add(6, 'day').format('YYYY-MM-DD')
-											: start;
+									bucket === 'year'
+										? dayjs(start).endOf('year').format('YYYY-MM-DD')
+										: bucket === 'month'
+											? dayjs(start).endOf('month').format('YYYY-MM-DD')
+											: bucket === 'week'
+												? dayjs(start).add(6, 'day').format('YYYY-MM-DD')
+												: start;
 								return `${key ? labelFor(key, start, end) : item.dataset.label}: ${money(item.parsed.y ?? 0)}`;
 							},
 							footer: (items) => {

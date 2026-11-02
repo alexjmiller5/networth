@@ -197,7 +197,12 @@
 		{ value: 'line', label: 'Line', icon: IconChartLine },
 		{ value: 'overview', label: 'Overview', icon: IconLayoutGrid }
 	] as const;
-	const BUCKETS: Record<Bucket, string> = { day: 'Daily', week: 'Weekly', month: 'Monthly' };
+	const BUCKETS: Record<Bucket, string> = {
+		day: 'Daily',
+		week: 'Weekly',
+		month: 'Monthly',
+		year: 'Yearly'
+	};
 	const GROUP_LABELS: Record<GroupBy, string> = {
 		account: 'By account',
 		bank: 'By bank',

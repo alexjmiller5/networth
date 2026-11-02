@@ -35,6 +35,7 @@ export function visibleMarkers(markers: Marker[], start: string, end: string): M
 	return markers.filter((m) => m.date <= end && (m.end ?? m.date) >= start);
 }
 function bucketDate(date: string, bucket: Bucket): string {
+	if (bucket === 'year') return date.slice(0, 4);
 	if (bucket === 'month') return date.slice(0, 7);
 	if (bucket === 'week') return addDays(date, -((new Date(date).getUTCDay() + 6) % 7));
 	return date;

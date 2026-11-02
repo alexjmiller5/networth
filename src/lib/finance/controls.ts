@@ -168,7 +168,7 @@ export function readControls(
 		activePreset: custom ? '' : activePreset,
 		dateStart: range.start,
 		dateEnd: range.end,
-		bucket: choice(saved.bucket, ['day', 'week', 'month'], 'day'),
+		bucket: choice(saved.bucket, ['day', 'week', 'month', 'year'], 'day'),
 		groupBy,
 		kind: choice(saved.kind, ['bar', 'area', 'line'], 'bar'),
 		flows,
