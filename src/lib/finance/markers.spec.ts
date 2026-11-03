@@ -84,7 +84,9 @@ describe('calendar markers', () => {
 });
 
 it('anchors point and range markers to yearly buckets', () => {
-	expect(markerBuckets({ date: '2030-06-15', title: 'Point' }, ['2030-01-01'], 'year')).toEqual({
+	expect(
+		markerBuckets({ date: '2030-06-15', end: null, title: 'Point' }, ['2030-01-01'], 'year')
+	).toEqual({
 		start: 0,
 		end: 0
 	});
