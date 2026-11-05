@@ -988,3 +988,74 @@ describe('consolidated controls', () => {
 		});
 	});
 });
+
+it('discovers runtime income categories and reconciles their filters in every period', () => {
+	const catalog = [
+		...categories,
+		{
+			id: 'runtime-income',
+			name: 'Runtime income',
+			kind: 'income' as const,
+			icon: 'tabler:coin',
+			sort: 30
+		},
+		{
+			id: 'runtime-bonus',
+			name: 'Runtime bonus',
+			kind: 'income' as const,
+			icon: 'tabler:coin',
+			sort: 31,
+			parentId: 'runtime-income'
+		}
+	];
+	const rows = [
+		{
+			account_id: 'account-1',
+			date: min,
+			amount: 120,
+			category: 'Runtime bonus',
+			categoryKind: 'income' as const
+		},
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: -20,
+			category: 'Runtime income',
+			categoryKind: 'income' as const
+		},
+		{ account_id: 'account-1', date: max, amount: 900 },
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: 500,
+			internal: true,
+			category: 'Runtime income',
+			categoryKind: 'income' as const
+		}
+	];
+	for (const bucket of ['day', 'week', 'month', 'year'] as const) {
+		for (const presentation of ['chart', 'overview'] as const) {
+			const selection = state({
+				measure: 'activity',
+				groupBy: 'category',
+				flows: ['income'],
+				bucket,
+				presentation,
+				activePreset: '',
+				dateStart: min,
+				dateEnd: max,
+				cumulativeChoice: false
+			});
+			const view = buildView(rows, accounts, catalog, selection);
+			expect(view.keys).toContain('Runtime income');
+			expect(view.drill.drillable).toContain('Runtime income');
+			expect(view.total).toBe(100);
+			expect(view.summary.reduce((sum, row) => sum + (row.value ?? 0), 0)).toBe(100);
+			expect(view.uncategorized).toBe(1);
+			const empty = buildView(rows, accounts, catalog, { ...selection, dateStart: max });
+			expect(empty.total).toBe(-20);
+			expect(empty.uncategorized).toBe(1);
+		}
+	}
+	expect(rows[2]).not.toHaveProperty('category');
+});
