@@ -309,7 +309,7 @@
 			average.length && kind === 'bar'
 				? [
 						{
-							label: `14-day average${bucket === 'day' ? '' : ` (${bucket} equivalent)`}`,
+							label: '14-day average',
 							type: 'line' as const,
 							data: average,
 							stack: 'average',
