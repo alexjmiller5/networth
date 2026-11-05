@@ -31,3 +31,25 @@ export function tooltipTotal(
 		.filter((i) => i.dataset.stack !== 'net' && i.dataset.stack !== 'average')
 		.reduce((sum, i) => sum + (i.parsed.y ?? 0), 0);
 }
+
+/** A rolling overlay keeps the plotted unit; it is not another period total. */
+export function rollingAverageDataset(values: (number | null)[], ink: string, surface: string) {
+	return {
+		label: '14-day average',
+		type: 'line' as const,
+		data: values,
+		stack: 'average',
+		borderColor: ink,
+		backgroundColor: ink,
+		borderDash: [3, 3],
+		borderWidth: 2,
+		pointStyle: 'line' as const,
+		pointRadius: values.filter((v) => v !== null).length === 1 ? 3 : 0,
+		pointHoverRadius: 5,
+		pointBorderColor: surface,
+		pointBorderWidth: 2,
+		fill: false,
+		spanGaps: false,
+		order: -2
+	};
+}

@@ -11,7 +11,12 @@
 	import { formatMoney, formatMoneyTick } from '$lib/finance/display';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
 	import IconChevronRight from '@tabler/icons-svelte/icons/chevron-right';
-	import { colorForSlot, needsNet, tooltipTotal } from '$lib/finance/chartStyle';
+	import {
+		colorForSlot,
+		needsNet,
+		tooltipTotal,
+		rollingAverageDataset
+	} from '$lib/finance/chartStyle';
 	import {
 		Chart,
 		LineController,
@@ -307,26 +312,7 @@
 			: [];
 		const averageDataset =
 			average.length && kind === 'bar'
-				? [
-						{
-							label: '14-day average',
-							type: 'line' as const,
-							data: average,
-							stack: 'average',
-							borderColor: chartTheme.ink,
-							backgroundColor: chartTheme.ink,
-							borderDash: [3, 3],
-							borderWidth: 2,
-							pointStyle: 'line',
-							pointRadius: average.filter((v) => v !== null).length === 1 ? 3 : 0,
-							pointHoverRadius: 5,
-							pointBorderColor: chartTheme.surface,
-							pointBorderWidth: 2,
-							fill: false,
-							spanGaps: false,
-							order: -2
-						}
-					]
+				? [rollingAverageDataset(average, chartTheme.ink, chartTheme.surface)]
 				: [];
 
 		chart = new Chart(canvas, {

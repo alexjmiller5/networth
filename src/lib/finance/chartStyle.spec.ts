@@ -52,3 +52,23 @@ it('excludes both average and net overlays from financial tooltip totals', async
 	const row = (y: number, stack?: string) => ({ dataset: { stack }, parsed: { y } });
 	expect(tooltipTotal([row(100), row(-20), row(80, 'net'), row(40, 'average')])).toBe(80);
 });
+
+it('keeps a rolling overlay unscaled in its wording and separate from monetary totals', async () => {
+	const { rollingAverageDataset, tooltipTotal } = await import('./chartStyle');
+	const overlay = rollingAverageDataset([100, null, 200], '#ffffff', '#000000');
+	expect(overlay.label).toBe('14-day average');
+	expect(overlay.label).not.toMatch(/equivalent/);
+	expect(overlay.data).toEqual([100, null, 200]);
+	expect(overlay.spanGaps).toBe(false);
+	expect(
+		tooltipTotal([
+			{ dataset: overlay, parsed: { y: 200 } },
+			{ dataset: {}, parsed: { y: 300 } }
+		])
+	).toBe(300);
+});
+it('leaves a single known rolling observation visible without bridging unknown days', async () => {
+	const { rollingAverageDataset } = await import('./chartStyle');
+	expect(rollingAverageDataset([null, 5, null], '#ffffff', '#000000').pointRadius).toBe(3);
+	expect(rollingAverageDataset([5, 6], '#ffffff', '#000000').pointRadius).toBe(0);
+});
