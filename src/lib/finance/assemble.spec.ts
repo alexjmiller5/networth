@@ -1145,3 +1145,57 @@ it('counts settled benefit purchases with equal realized income and reverses ref
 	]);
 	expect(model.txns.every((t) => t.account_id === null && t.balanceAmount === null)).toBe(true);
 });
+
+it('projects supported catalog transaction context without provider raw data', () => {
+	const t = structuredClone(tables);
+	Object.assign(t.txns.bofa[0], {
+		name: 'Synthetic shop',
+		payee: 'Merchant',
+		memo: 'Receipt',
+		bank_category: 'Retail',
+		posted_date: '2026-02-03',
+		pps: '2.5',
+		points: '4',
+		rewards: '0',
+		scraped_at: '2026-02-04T00:00:00.000Z',
+		raw: { secret: 'not-for-client' }
+	});
+	Object.assign(t.overlay[0], {
+		note: 'Shared meal',
+		group: 'story-1',
+		reviewed_at: '2026-02-04T00:00:00.000Z'
+	});
+	const row = assemble(t).txns.find((t) => t.source_id === 't1')!;
+	expect(row).toMatchObject({
+		name: 'Synthetic shop',
+		payee: 'Merchant',
+		memo: 'Receipt',
+		bank_category: 'Retail',
+		posted_date: '2026-02-03',
+		pps: 2.5,
+		points: 4,
+		rewards: 0,
+		note: 'Shared meal',
+		group: 'story-1',
+		reviewed_at: '2026-02-04T00:00:00.000Z'
+	});
+	expect(row).not.toHaveProperty('raw');
+});
+
+it('keeps share-specific expense context and standalone context without inventing review confirmation', () => {
+	const t = structuredClone(tables);
+	Object.assign(t.shares[0], {
+		note: 'Owned portion',
+		group: 'share-story',
+		origin: 'manual',
+		counterparty: 'opaque-person'
+	});
+	const row = assemble(t).txns.find((t) => t.shares?.length)!;
+	expect(row.shares![0]).toMatchObject({
+		note: 'Owned portion',
+		group: 'share-story',
+		origin: 'manual',
+		counterparty: 'opaque-person'
+	});
+	expect(row.shares![0]).not.toHaveProperty('reviewed_at');
+});

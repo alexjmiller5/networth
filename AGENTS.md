@@ -34,6 +34,14 @@ protects the site and every API route.
 - The assembler joins raw transactions to overlays and dated shares. A
   category belongs to the overlay or shares, never both. Standalone shares
   have no bank account and affect spending only.
+- The main graph's Transactions popover filters projected catalog context (ledger
+  description, payee, memo, bank category, note, expense group, explicit review
+  timestamp, source identity, dates and numeric details). Text contains/equality,
+  numeric bounds and missing/present checks apply to owned flow pieces after
+  splits and principal removal. Shares keep their own note/group/origin/counterparty.
+  Refund signs, transfer/exclusion rules and uncategorized omission remain intact.
+  Balances disable this filter and retain the full raw ledger; its saved choice
+  resumes on returning to flows. Category presence never implies review confirmation.
 - Raw ledger amounts derive monetary balances. Venmo statement evidence
   removes externally funded movements from its balance calculation.
   Shares, categories, exclusions, and stated balances never overwrite raw

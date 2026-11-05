@@ -61,6 +61,10 @@ export interface AccountCoverage {
 
 /** One person's piece of a shared charge (the estate's `shares` table). */
 export interface TxnShare {
+	note?: string;
+	group?: string;
+	origin?: string;
+	counterparty?: string;
 	date?: string;
 	amount: number; // signed like the parent, never larger
 	category: string;
@@ -70,6 +74,20 @@ export interface TxnShare {
 }
 
 export interface Txn {
+	origin?: string;
+	counterparty?: string;
+	name?: string;
+	payee?: string;
+	memo?: string;
+	bank_category?: string;
+	note?: string;
+	group?: string;
+	reviewed_at?: string;
+	posted_date?: string;
+	scraped_at?: string;
+	pps?: number;
+	rewards?: number;
+	points?: number;
 	source?: string | null;
 	source_id?: string | null;
 	account_id: string | null;

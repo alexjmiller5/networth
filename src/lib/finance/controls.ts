@@ -1,3 +1,9 @@
+import {
+	matchesTransaction,
+	TRANSACTION_FIELDS,
+	FILTER_OPERATORS,
+	type TransactionFilter
+} from './transactionFilter';
 import type {
 	Account,
 	AccountCoverage,
@@ -57,6 +63,7 @@ export type Measure = 'balances' | 'net' | 'spending' | 'income';
 export interface Controls {
 	hideAmounts: boolean;
 	showAverage: boolean;
+	txnFilter: TransactionFilter;
 	presentation: 'chart' | 'overview';
 	accountStatuses: ('open' | 'closed')[];
 	assetClassFilter: AssetClass[];
@@ -150,7 +157,21 @@ export function readControls(
 		GROUPS.map((g) => [g, strings(savedHidden[g])])
 	) as Controls['hidden'];
 	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
+	const filter = record(saved.txnFilter);
 	return {
+		txnFilter: {
+			field: choice(
+				filter.field,
+				Object.keys(TRANSACTION_FIELDS) as TransactionFilter['field'][],
+				'name'
+			),
+			operator: choice(
+				filter.operator,
+				Object.keys(FILTER_OPERATORS) as TransactionFilter['operator'][],
+				'contains'
+			),
+			value: typeof filter.value === 'string' ? filter.value : ''
+		},
 		hideAmounts: saved.hideAmounts === true,
 		showAverage: saved.showAverage === true,
 		presentation: choice(saved.presentation, ['chart', 'overview'], 'chart'),
@@ -298,6 +319,12 @@ export function buildView(
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
 	const mode = state.flows.length === 1 ? state.flows[0] : 'signed';
 	const isFlow = state.measure === 'activity' || groupBy === 'category';
+	// Filter owned pieces after splitting, never remove raw ledger balance effects.
+	if (isFlow)
+		txns = flowPieces(txns)
+			.filter((t) => matchesTransaction(t, state.txnFilter))
+			.map((t) => ({ ...t, principal: undefined }));
+
 	const cumulative = state.presentation === 'overview' || (state.cumulativeChoice ?? !isFlow);
 	const accountOf = new Map(accounts.map((a) => [a.id, a]));
 	// Grouped by category, rows roll up to the open node's children (top level: roots).

@@ -190,6 +190,8 @@ export function assemble(t: EstateTables): Estate {
 			category: str(s.category),
 			categoryKind: categoryKind(str(s.category))
 		};
+		for (const field of ['note', 'group', 'origin', 'counterparty'] as const)
+			if (s[field] != null) share[field] = str(s[field]);
 		if (share.amount === 0) throw new Error('Zero finance share');
 		if (s.source == null) {
 			standalone.push({
@@ -294,6 +296,15 @@ export function assemble(t: EstateTables): Estate {
 				txn.category = str(o.category);
 				txn.categoryKind = categoryKind(txn.category);
 			}
+			for (const field of ['name', 'payee', 'memo', 'bank_category'] as const)
+				if (r[field] != null) txn[field] = str(r[field]);
+			for (const field of ['note', 'group'] as const)
+				if (o?.[field] != null) txn[field] = str(o[field]);
+			if (o?.reviewed_at != null) txn.reviewed_at = timestamp(o.reviewed_at);
+			if (r.posted_date != null) txn.posted_date = date(r.posted_date);
+			if (r.scraped_at != null) txn.scraped_at = timestamp(r.scraped_at);
+			for (const field of ['pps', 'rewards', 'points'] as const)
+				if (r[field] != null) txn[field] = num(r[field]);
 			if (r.status != null) txn.status = str(r.status);
 			if (r.qty != null) txn.qty = num(r.qty);
 			if (r.ticker != null) txn.ticker = str(r.ticker);

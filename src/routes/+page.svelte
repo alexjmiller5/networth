@@ -3,6 +3,7 @@
 	import IconFlag from '@tabler/icons-svelte/icons/flag';
 	import MarkersDialog from '$lib/components/MarkersDialog.svelte';
 	import FinanceRunCard from '$lib/components/FinanceRunCard.svelte';
+	import TransactionFilter from '$lib/components/TransactionFilter.svelte';
 	import { visibleMarkers, type Marker, type MarkerInput } from '$lib/finance/markers';
 	import { formatMoney, formatUnits, formatCoverage, valuationLabel } from '$lib/finance/display';
 	import IconEye from '@tabler/icons-svelte/icons/eye';
@@ -528,6 +529,8 @@
 				<Select.Item value="cumulative" label={totals.cumulative} />
 			</Select.Content>
 		</Select.Root>
+
+		<TransactionFilter bind:filter={controls.txnFilter} disabled={!view.isFlow} />
 
 		<Button
 			variant={controls.showAverage ? 'default' : 'outline'}

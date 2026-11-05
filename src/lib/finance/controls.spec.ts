@@ -1059,3 +1059,111 @@ it('discovers runtime income categories and reconciles their filters in every pe
 	}
 	expect(rows[2]).not.toHaveProperty('category');
 });
+
+it('filters owned flow pieces while preserving refunds, dates, review queue and raw balances', () => {
+	const rows = [
+		{
+			account_id: 'account-1',
+			date: min,
+			amount: -100,
+			name: 'Synthetic shop',
+			category: 'Category 1',
+			shares: [
+				{ date: max, amount: -30, category: 'Category 1', categoryKind: 'spending' as const }
+			]
+		},
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: 5,
+			name: 'Synthetic shop',
+			category: 'Category 1',
+			categoryKind: 'spending' as const
+		},
+		{ account_id: 'account-1', date: max, amount: -8, name: 'Other shop', category: 'Category 1' },
+		{ account_id: 'account-1', date: max, amount: -7, name: 'Synthetic shop' }
+	];
+	for (const bucket of ['day', 'week', 'month', 'year'] as const) {
+		const selection = state({
+			activePreset: '',
+			dateStart: max,
+			dateEnd: max,
+			measure: 'activity',
+			flows: ['spending'],
+			bucket,
+			cumulativeChoice: false,
+			txnFilter: { field: 'name', operator: 'contains', value: 'synthetic' }
+		});
+		const view = buildView(rows, accounts, categories, selection);
+		expect(view.total).toBe(25);
+		expect(view.uncategorized).toBe(1);
+		expect(
+			buildView(rows, accounts, categories, {
+				...selection,
+				measure: 'balances',
+				cumulativeChoice: true
+			}).total
+		).toBe(-110);
+	}
+	const selection = state({
+		measure: 'activity',
+		flows: ['spending'],
+		txnFilter: { field: 'amount', operator: 'min', value: '-50' }
+	});
+	expect(buildView(rows, accounts, categories, selection).total).toBe(33);
+	expect(restore(JSON.stringify(selection)).txnFilter).toEqual(selection.txnFilter);
+});
+
+it('does not subtract refundable principal twice when applying transaction filters', () => {
+	const rows = [
+		{ account_id: 'account-1', date: max, amount: -100, principal: -70, category: 'Category 1' }
+	];
+	expect(
+		buildView(rows, accounts, categories, state({ measure: 'activity', flows: ['spending'] })).total
+	).toBe(30);
+});
+
+it('composes context and review filters with every grouping and overview without recategorizing', () => {
+	const rows = [
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: -100,
+			group: 'parent',
+			shares: [
+				{ amount: -30, category: 'Category 1', group: 'owned', categoryKind: 'spending' as const }
+			]
+		},
+		{
+			account_id: 'account-1',
+			date: max,
+			amount: -20,
+			group: 'owned',
+			category: 'Category 2',
+			reviewed_at: '2026-03-31T00:00:00.000Z'
+		},
+		{ account_id: 'account-1', date: max, amount: -7, group: 'owned' }
+	];
+	for (const groupBy of ['account', 'bank', 'type', 'asset', 'category'] as const) {
+		for (const presentation of ['chart', 'overview'] as const) {
+			const selection = state({
+				groupBy,
+				presentation,
+				measure: 'activity',
+				flows: ['spending'],
+				txnFilter: { field: 'group', operator: 'equals', value: 'owned' }
+			});
+			const view = buildView(rows, accounts, categories, selection);
+			expect(view.total).toBe(50);
+			expect(view.summary.reduce((n, r) => n + (r.value ?? 0), 0)).toBe(50);
+			expect(view.uncategorized).toBe(1);
+			const reviewed = buildView(rows, accounts, categories, {
+				...selection,
+				txnFilter: { field: 'reviewed_at', operator: 'present', value: '' }
+			});
+			expect(reviewed.total).toBe(20);
+			expect(reviewed.uncategorized).toBe(0);
+		}
+	}
+	expect(rows[2]).not.toHaveProperty('category');
+});
