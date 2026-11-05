@@ -6,8 +6,8 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` is
-  server configuration;
+- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` comes from this project's owning ENV item and is delivered as a
+  plain deployment variable by `scripts/sync-secrets.sh --deploy`;
   `SOMA_HUB_TOKEN` is this server's own Soma credential, enrolled with a
   read-only profile (broad `tables:read`, since reward and asset reads take
   `provenance` slices no table-scoped grant can name); it is never minted by

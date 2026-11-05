@@ -50,10 +50,5 @@
 	],
 	// Daily price cache refresh (worker.js `scheduled`), after US mutual fund NAVs post.
 	"triggers": { "crons": ["30 2 * * *"] },
-	"secrets": { "required": ["SOMA_HUB_TOKEN", "TIINGO_API_KEY"] },
-	// Where the estate lives. The read token (SOMA_HUB_TOKEN) is a Worker
-	// secret pushed by scripts/sync-secrets.sh, never a var.
-	"vars": {
-		"SOMA_HUB_URL": "https://soma.nqipomyrjb.workers.dev"
-	}
+	"secrets": { "required": ["SOMA_HUB_TOKEN", "TIINGO_API_KEY"] }
 }

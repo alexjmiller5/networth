@@ -3,7 +3,7 @@
 declare global {
 	namespace App {
 		interface Platform {
-			env: Env;
+			env: Env & { SOMA_HUB_URL: string };
 			ctx: ExecutionContext;
 			caches: CacheStorage;
 			cf?: IncomingRequestCfProperties;

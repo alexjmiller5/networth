@@ -5,7 +5,7 @@
 set -euo pipefail
 op run --env-file=.env.tpl -- bash -euc '
   names=(SOMA_HUB_TOKEN TIINGO_API_KEY)
-  for name in "${names[@]}"; do
+  for name in "${names[@]}" SOMA_HUB_URL; do
     value="${!name:-}"
     if [[ -z "$value" || "$value" == CHANGEME || "$value" == op://* || "$value" == *$'"'"'\n'"'"'* ]]; then
       echo "A resolved $name is required" >&2
@@ -15,7 +15,7 @@ op run --env-file=.env.tpl -- bash -euc '
   if [[ "${1:-}" == --deploy ]]; then
     shift
     for name in "${names[@]}"; do printf "%s=%s\n" "$name" "${!name}"; done |
-      bunx wrangler deploy --secrets-file /dev/stdin "$@"
+      bunx wrangler deploy --var "SOMA_HUB_URL:$SOMA_HUB_URL" --secrets-file /dev/stdin "$@"
   else
     for name in "${names[@]}"; do printf "%s" "${!name}" | bunx wrangler secret put "$name" "$@"; done
   fi
