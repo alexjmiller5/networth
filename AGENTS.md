@@ -155,6 +155,7 @@ protects the site and every API route.
   or whole parents. Every event needs a live `evidence_of` edge; evidence keys stay
   server-side. Assets have no coverage row: they are evidenced, not reconciled.
 - Calendar buckets support daily, weekly, monthly and yearly views. Yearly levels take the closing value; flows sum only selected dates, and event markers anchor to their calendar year.
+- The main graph's average summary uses complete visible plotted totals, with its measure and bucket labeled. Any unavailable value makes the summary unavailable. The saved 14-day toggle applies only to bars, stays disabled in other views, and retains its choice. It averages calendar-day data before bucketing, with pre-window history for levels and per-period flows/changes; running flow totals retain their selected-window baseline. Coarse flow/change means scale to the bucket's selected calendar days; levels are sampled without scaling. Overlay values never add to financial totals and conceal with other amounts.
 - Bars are the default. Date, grouping, visible series, and chart mode must
   agree with headline figures and survive refresh. Money axis ticks are compact
   with the sign first (`-$1.5k`, `$800`). Show every category;

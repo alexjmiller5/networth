@@ -46,3 +46,9 @@ describe('chart encodings', () => {
 		expect(colorForSlot(24, palette, 65, 45)).not.toBe(colorForSlot(0, palette, 65, 45));
 	});
 });
+
+it('excludes both average and net overlays from financial tooltip totals', async () => {
+	const { tooltipTotal } = await import('./chartStyle');
+	const row = (y: number, stack?: string) => ({ dataset: { stack }, parsed: { y } });
+	expect(tooltipTotal([row(100), row(-20), row(80, 'net'), row(40, 'average')])).toBe(80);
+});

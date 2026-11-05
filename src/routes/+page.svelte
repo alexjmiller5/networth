@@ -529,6 +529,16 @@
 			</Select.Content>
 		</Select.Root>
 
+		<Button
+			variant={controls.showAverage ? 'default' : 'outline'}
+			disabled={controls.presentation === 'overview' || controls.kind !== 'bar'}
+			aria-label="14-day average"
+			aria-pressed={controls.showAverage}
+			title="Trailing 14 calendar days of visible series. Flows scale to the selected days in each bucket; running totals retain this range's baseline. Unavailable observations remain gaps."
+			onclick={() => (controls.showAverage = !controls.showAverage)}
+			><IconChartLine size={16} />14-day average</Button
+		>
+
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
@@ -769,6 +779,12 @@
 	{:else}
 		<BalanceChart
 			data={view.data}
+			average={view.average}
+			averageLabel={view.cumulative
+				? view.isFlow
+					? 'Average running total'
+					: 'Average closing balance'
+				: `Average per ${controls.bucket}`}
 			markers={visibleMarkers(markers, viewState.dateStart, viewState.dateEnd)}
 			hideAmounts={controls.hideAmounts}
 			bucket={controls.bucket}

@@ -11,7 +11,7 @@
 	import { formatMoney, formatMoneyTick } from '$lib/finance/display';
 	import IconHelp from '@tabler/icons-svelte/icons/help';
 	import IconChevronRight from '@tabler/icons-svelte/icons/chevron-right';
-	import { colorForSlot, needsNet } from '$lib/finance/chartStyle';
+	import { colorForSlot, needsNet, tooltipTotal } from '$lib/finance/chartStyle';
 	import {
 		Chart,
 		LineController,
@@ -30,7 +30,7 @@
 	} from 'chart.js';
 	import 'chartjs-adapter-dayjs-4';
 	import dayjs from 'dayjs';
-	import { netTotals, type StackedSeries, type Bucket } from '$lib/finance/series';
+	import { averageValue, netTotals, type StackedSeries, type Bucket } from '$lib/finance/series';
 
 	Chart.register(
 		LineController,
@@ -48,6 +48,8 @@
 
 	interface Props {
 		markers?: Marker[];
+		average?: (number | null)[];
+		averageLabel?: string;
 		hideAmounts?: boolean;
 		data: StackedSeries;
 		bucket?: Bucket;
@@ -77,6 +79,8 @@
 	}
 	const {
 		markers = [],
+		average = [],
+		averageLabel,
 		data,
 		bucket = 'day',
 		hideAmounts = false,
@@ -247,6 +251,7 @@
 	};
 
 	let theme = $state<ReturnType<typeof readTheme> | null>(null);
+	const selectedAverage = $derived(averageValue(data));
 	const slots = $derived(new Map(legendKeys.map((key, i) => [key, i])));
 	function color(key: string): string {
 		return theme
@@ -300,6 +305,30 @@
 					}
 				]
 			: [];
+		const averageDataset =
+			average.length && kind === 'bar'
+				? [
+						{
+							label: `14-day average${bucket === 'day' ? '' : ` (${bucket} equivalent)`}`,
+							type: 'line' as const,
+							data: average,
+							stack: 'average',
+							borderColor: chartTheme.ink,
+							backgroundColor: chartTheme.ink,
+							borderDash: [3, 3],
+							borderWidth: 2,
+							pointStyle: 'line',
+							pointRadius: average.filter((v) => v !== null).length === 1 ? 3 : 0,
+							pointHoverRadius: 5,
+							pointBorderColor: chartTheme.surface,
+							pointBorderWidth: 2,
+							fill: false,
+							spanGaps: false,
+							order: -2
+						}
+					]
+				: [];
+
 		chart = new Chart(canvas, {
 			type: kind === 'bar' ? 'bar' : 'line',
 			data: {
@@ -331,7 +360,7 @@
 									tension: 0.2
 								})
 					}))
-					.concat(netDataset as never[]) as ChartDataset<'bar'>[]
+					.concat(netDataset as never[], averageDataset as never[]) as ChartDataset<'bar'>[]
 			},
 			options: {
 				layout: {
@@ -393,7 +422,9 @@
 						}
 					},
 					tooltip: {
-						filter: (item) => Math.round(Math.abs(item.parsed.y ?? 0) * 100) !== 0,
+						filter: (item) =>
+							item.dataset.stack === 'average' ||
+							Math.round(Math.abs(item.parsed.y ?? 0) * 100) !== 0,
 						usePointStyle: true,
 						backgroundColor: chartTheme.surface,
 						titleColor: chartTheme.ink,
@@ -422,9 +453,7 @@
 							},
 							footer: (items) => {
 								// the Net row already IS the total - don't double-count it
-								const total = items
-									.filter((it) => it.dataset.stack !== 'net')
-									.reduce((sum, it) => sum + (it.parsed.y ?? 0), 0);
+								const total = tooltipTotal(items);
 								const i = items[0]?.dataIndex ?? -1;
 								const missing = data.series
 									.filter((s) => s.data[i] === null && !hidden.includes(s.key))
@@ -459,6 +488,7 @@
 	});
 	$effect(() => {
 		void data;
+		void average;
 		void bucket;
 		void kind;
 		void hideAmounts;
@@ -469,6 +499,11 @@
 	});
 </script>
 
+{#if averageLabel}
+	<p class="text-xs text-muted-foreground" role="status">
+		{averageLabel}: {selectedAverage === null ? 'Unavailable' : money(selectedAverage!)}
+	</p>
+{/if}
 <div class="relative w-full {heightClass}">
 	<canvas bind:this={canvas} aria-label={ariaLabel}></canvas>
 	<MarkerTooltip.Provider>

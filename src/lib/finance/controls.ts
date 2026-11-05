@@ -28,6 +28,8 @@ import {
 	flowSeries,
 	groupSeries,
 	netTotals,
+	rollingAverage,
+	type StackedSeries,
 	type Bucket
 } from './series';
 
@@ -54,6 +56,7 @@ export const SOURCE_LABELS = {
 export type Measure = 'balances' | 'net' | 'spending' | 'income';
 export interface Controls {
 	hideAmounts: boolean;
+	showAverage: boolean;
 	presentation: 'chart' | 'overview';
 	accountStatuses: ('open' | 'closed')[];
 	assetClassFilter: AssetClass[];
@@ -149,6 +152,7 @@ export function readControls(
 	if (!('hidden' in saved)) hidden[groupBy] = strings(saved.excluded);
 	return {
 		hideAmounts: saved.hideAmounts === true,
+		showAverage: saved.showAverage === true,
 		presentation: choice(saved.presentation, ['chart', 'overview'], 'chart'),
 		accountStatuses: accountStatuses.length
 			? accountStatuses
@@ -329,27 +333,26 @@ export function buildView(
 					)
 			)
 		: accounts;
-	let base;
-	if (isFlow) base = flowSeries(txns, start, end, bucket, keyOf, mode);
-	else {
-		base = bucketize(
+	const makeBase = (from: string, to: string, unit: Bucket): StackedSeries => {
+		if (isFlow) return flowSeries(txns, from, to, unit, keyOf, mode);
+		const levels = bucketize(
 			groupSeries(
-				deriveBalances(txns, verified, start, end, undefined, valuations),
+				deriveBalances(txns, verified, from, to, undefined, valuations),
 				verified,
 				groupBy
 			),
-			bucket
+			unit
 		);
-		if (!cumulative) {
-			const before = addDays(start, -1);
-			const initial = groupSeries(
-				deriveBalances(txns, verified, before, before, undefined, valuations),
-				verified,
-				groupBy
-			);
-			base = differentiate(base, new Map(initial.series.map((s) => [s.key, s.data[0]])));
-		}
-	}
+		if (cumulative) return levels;
+		const before = addDays(from, -1);
+		const initial = groupSeries(
+			deriveBalances(txns, verified, before, before, undefined, valuations),
+			verified,
+			groupBy
+		);
+		return differentiate(levels, new Map(initial.series.map((s) => [s.key, s.data[0]])));
+	};
+	const base = makeBase(start, end, bucket);
 	const registry =
 		groupBy === 'category'
 			? levelKeys(
@@ -407,6 +410,25 @@ export function buildView(
 			: requested;
 	let data = { ...base, series: base.series.filter((s) => !hidden.includes(s.key)) };
 	if (isFlow && cumulative) data = accumulate(data);
+	let average: (number | null)[] = [];
+	if (state.showAverage && state.presentation === 'chart' && state.kind === 'bar') {
+		const first =
+			[
+				...txns.flatMap((t) => [
+					t.date,
+					...(t.shares ?? []).map((s) => s.date).filter((d): d is string => !!d)
+				]),
+				...valuations.map((v) => v.start)
+			].sort()[0] ?? start;
+		const from =
+			isFlow && cumulative ? start : addDays(start, -13) > first ? addDays(start, -13) : first;
+		const visible = new Set(data.series.map((s) => s.key));
+		let daily = makeBase(from, end, 'day');
+		daily = { ...daily, series: daily.series.filter((s) => visible.has(s.key)) };
+		if (isFlow && cumulative) daily = accumulate(daily);
+		average = rollingAverage(daily, data.dates, bucket, start, end, !cumulative);
+	}
+
 	const totals = netTotals(data);
 	const total = cumulative
 		? (totals.at(-1) ?? 0)
@@ -470,6 +492,7 @@ export function buildView(
 		return !!key && !hidden.includes(key);
 	}).length;
 	return {
+		average,
 		data,
 		keys,
 		applicable,

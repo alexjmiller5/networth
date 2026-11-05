@@ -303,3 +303,48 @@ export function flowsByCategory(
 ): StackedSeries {
 	return flowSeries(txns, start, end, bucket, (t) => t.category);
 }
+
+/** Complete visible totals for annotations; an unavailable member is never zero. */
+function completeTotals(s: StackedSeries): (number | null)[] {
+	return s.dates.map((_, i) =>
+		!s.series.length || s.series.some((row) => row.data[i] == null)
+			? null
+			: s.series.reduce((sum, row) => sum + row.data[i]!, 0)
+	);
+}
+
+export function averageValue(s: StackedSeries): number | null {
+	const totals = completeTotals(s);
+	return !totals.length || totals.some((v) => v === null)
+		? null
+		: totals.reduce<number>((sum, v) => sum + v!, 0) / totals.length;
+}
+
+/** Daily history precedes the visible window. Flow means use the selected bucket's day count. */
+export function rollingAverage(
+	daily: StackedSeries,
+	labels: string[],
+	bucket: Bucket,
+	start: string,
+	end: string,
+	scaleFlows = false
+): (number | null)[] {
+	const complete = completeTotals(daily);
+	const totals = new Map(daily.dates.map((d, i) => [d, complete[i]]));
+	const samples = new Map<string, string[]>();
+	for (const d of daily.dates)
+		if (d >= start && d <= end) {
+			const label = bucketLabel(d, bucket);
+			samples.set(label, [...(samples.get(label) ?? []), d]);
+		}
+	return labels.map((label) => {
+		const days = samples.get(label);
+		const last = days?.at(-1);
+		if (!last || !daily.series.length) return null;
+		const from = addDays(last, -13);
+		const window = dateRange(from < daily.dates[0] ? daily.dates[0] : from, last);
+		if (!window.length || window.some((d) => totals.get(d) == null)) return null;
+		const mean = window.reduce((sum, d) => sum + totals.get(d)!, 0) / window.length;
+		return mean * (scaleFlows ? days!.length : 1);
+	});
+}

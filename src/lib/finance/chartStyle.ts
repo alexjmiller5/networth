@@ -22,3 +22,12 @@ export function colorForSlot(
 		palette[slot] ?? `hsl(${((slot * 137.508) % 360).toFixed(3)} ${saturation}% ${lightness}%)`
 	);
 }
+
+/** Overlay rows describe the stack, never add money to its total. */
+export function tooltipTotal(
+	items: { dataset: { stack?: string }; parsed: { y: number | null } }[]
+): number {
+	return items
+		.filter((i) => i.dataset.stack !== 'net' && i.dataset.stack !== 'average')
+		.reduce((sum, i) => sum + (i.parsed.y ?? 0), 0);
+}
