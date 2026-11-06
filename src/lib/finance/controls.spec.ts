@@ -376,7 +376,8 @@ describe('control persistence', () => {
 			bank: ['A, B & C'],
 			type: ['checking'],
 			asset: [],
-			category: ['Category 2']
+			category: ['Category 2'],
+			trip: []
 		};
 		let saved = '';
 		expect(
@@ -1166,4 +1167,208 @@ it('composes context and review filters with every grouping and overview without
 		}
 	}
 	expect(rows[2]).not.toHaveProperty('category');
+});
+
+it('reconciles By trip with the same flows through every period and overview', () => {
+	const rows = [
+		{
+			source: 'bank',
+			source_id: 'one',
+			account_id: 'account-1',
+			date: '2026-01-03',
+			amount: -30,
+			category: 'Category 1',
+			categoryKind: 'spending' as const
+		},
+		{
+			source: 'bank',
+			source_id: 'refund',
+			account_id: 'account-1',
+			date: '2026-01-04',
+			amount: 5,
+			category: 'Category 1',
+			categoryKind: 'spending' as const
+		},
+		{
+			source: 'bank',
+			source_id: 'split',
+			account_id: 'account-1',
+			date: min,
+			amount: -100,
+			shares: [
+				{
+					share_id: 'owned',
+					date: '2026-01-03',
+					amount: -10,
+					category: 'Category 1',
+					categoryKind: 'spending' as const
+				}
+			]
+		},
+		{
+			account_id: 'account-1',
+			date: '2026-01-03',
+			amount: -900,
+			internal: true,
+			category: 'Category 1'
+		},
+		{ account_id: 'account-1', date: '2026-01-03', amount: -7 }
+	];
+	const tripData = {
+		trips: [
+			{ id: 't1', name: 'Trip one', intervals: [{ start: min, end: '2026-01-03' }] },
+			{ id: 't2', name: 'Trip two', intervals: [{ start: '2026-01-03', end: max }] }
+		],
+		settlements: {}
+	};
+	for (const bucket of ['day', 'week', 'month', 'year'] as const)
+		for (const presentation of ['chart', 'overview'] as const) {
+			const selection = state({
+				groupBy: 'trip',
+				bucket,
+				presentation,
+				measure: 'activity',
+				flows: ['spending'],
+				activePreset: '',
+				dateStart: min,
+				dateEnd: max,
+				cumulativeChoice: false
+			});
+			const view = buildView(rows, accounts, categories, selection, undefined, [], tripData);
+			expect(view.total).toBe(35);
+			expect(view.summary.reduce((n, r) => n + (r.value ?? 0), 0)).toBe(35);
+			expect(view.tripReviews).toHaveLength(2);
+			expect(view.tripReviews.map((r) => r.reference)).toContain('share:owned');
+			expect(view.uncategorized).toBe(1);
+		}
+	expect(setMeasure(state({ groupBy: 'trip' }), 'balances')).toMatchObject({
+		groupBy: 'account',
+		measure: 'balances'
+	});
+});
+
+it('does not offer a parent expense reference as a definitive identity for an old split snapshot', () => {
+	const rows = [
+		{
+			source: 'bank',
+			source_id: 'parent',
+			account_id: 'account-1',
+			date: min,
+			amount: -30,
+			shares: [{ date: min, amount: -10, category: 'Category 1' }]
+		}
+	];
+	const data = {
+		trips: [
+			{ id: 'a', name: 'A', intervals: [{ start: min, end: max }] },
+			{ id: 'b', name: 'B', intervals: [{ start: min, end: max }] }
+		],
+		settlements: {}
+	};
+	const view = buildView(
+		rows,
+		accounts,
+		categories,
+		state({ groupBy: 'trip', flows: ['spending'] }),
+		undefined,
+		[],
+		data
+	);
+	expect(view.tripReviews[0].reference).toBe('Share reference unavailable');
+});
+
+it('keeps trip-unavailable money distinct from unassigned and respects trip series filters', () => {
+	const rows = [
+		{
+			source: 'bank',
+			source_id: 'x',
+			account_id: 'account-1',
+			date: min,
+			amount: -10,
+			category: 'Category 1',
+			categoryKind: 'spending' as const
+		}
+	];
+	const selection = state({ groupBy: 'trip', flows: ['spending'] });
+	const missing = buildView(rows, accounts, categories, selection);
+	expect(missing.total).toBe(10);
+	expect(missing.keys).toContain('trip:unavailable');
+	expect(missing.tripReviews).toEqual([]);
+	const data = {
+		trips: [
+			{ id: 'a', name: 'A', intervals: [{ start: min, end: max }] },
+			{ id: 'b', name: 'B', intervals: [{ start: min, end: max }] }
+		],
+		settlements: {}
+	};
+	const filtered = buildView(
+		[...rows, { ...rows[0], source_id: 'refund', date: max, amount: 2 }],
+		accounts,
+		categories,
+		{ ...selection, hidden: { ...selection.hidden, trip: ['trip:ambiguous'] } },
+		undefined,
+		[],
+		{ ...data, settlements: { 'bank:refund': ['a'] } }
+	);
+	expect(filtered.total).toBe(-2);
+	expect(filtered.tripReviews).toEqual([]);
+});
+it('groups accountless owned shares with their trips while keeping source filters intact', () => {
+	const rows = [
+		{
+			standalone: true,
+			share_id: 'friend',
+			account_id: null,
+			date: min,
+			amount: -4,
+			category: 'Category 1'
+		},
+		{
+			standalone: true,
+			fundedBy: 'points',
+			source: 'rewards',
+			source_id: 'valuation',
+			account_id: null,
+			date: min,
+			amount: -6,
+			category: 'Category 1'
+		}
+	];
+	const data = {
+		trips: [{ id: 'a', name: 'A', intervals: [{ start: min, end: max }] }],
+		settlements: {}
+	};
+	expect(
+		buildView(
+			rows,
+			accounts,
+			categories,
+			state({ groupBy: 'trip', flows: ['spending'] }),
+			undefined,
+			[],
+			data
+		).total
+	).toBe(10);
+	expect(
+		buildView(
+			rows,
+			accounts,
+			categories,
+			state({ groupBy: 'trip', flows: ['spending'], balanceSources: ['accounts'] }),
+			undefined,
+			[],
+			data
+		).total
+	).toBe(4);
+	expect(
+		buildView(
+			rows,
+			accounts,
+			categories,
+			state({ groupBy: 'trip', flows: ['spending'], balanceSources: ['rewards'] }),
+			undefined,
+			[],
+			data
+		).total
+	).toBe(6);
 });

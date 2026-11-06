@@ -1,4 +1,13 @@
 import {
+	tripFor,
+	tripKey,
+	tripLabel,
+	AMBIGUOUS_TRIP,
+	UNASSIGNED_TRIP,
+	UNAVAILABLE_TRIP,
+	type TripData
+} from './trips';
+import {
 	matchesTransaction,
 	TRANSACTION_FIELDS,
 	FILTER_OPERATORS,
@@ -40,7 +49,7 @@ import {
 } from './series';
 
 export const STORAGE_KEY = 'networth-ui';
-export const GROUPS = ['account', 'bank', 'type', 'asset', 'category'] as const;
+export const GROUPS = ['account', 'bank', 'type', 'asset', 'category', 'trip'] as const;
 export const FRIEND_PAID = 'friend-paid';
 export const REWARDS_PAID = 'rewards-paid';
 export const BENEFITS_PAID = 'benefits-paid';
@@ -77,7 +86,7 @@ export interface Controls {
 	kind: 'bar' | 'area' | 'line';
 	flows: ('spending' | 'income')[];
 	cumulativeChoice: boolean | null;
-	hidden: Record<GroupBy, string[]>;
+	hidden: Record<Exclude<GroupBy, 'trip'>, string[]> & { trip?: string[] };
 	/** Open category in the category drill-down ('' = top level): a catalog id,
 	 * checked against the live tree when the view is built. */
 	categoryNode: string;
@@ -183,7 +192,7 @@ export function readControls(
 		assetClassFilter,
 		balanceSources: balanceSources.length ? balanceSources : ['accounts', 'rewards'],
 		measure:
-			groupBy === 'category'
+			groupBy === 'category' || groupBy === 'trip'
 				? 'activity'
 				: choice(
 						saved.measure,
@@ -233,7 +242,7 @@ export function setMeasure(
 	measure: Measure
 ): Partial<Pick<Controls, 'measure' | 'flows' | 'groupBy'>> {
 	if (measure === 'balances')
-		return state.groupBy === 'category'
+		return state.groupBy === 'category' || state.groupBy === 'trip'
 			? { measure: 'balances', groupBy: 'account' }
 			: { measure: 'balances' };
 	return {
@@ -285,9 +294,8 @@ export function toggleHidden(
 	key: string,
 	applicable: string[]
 ): Controls['hidden'] {
-	let next = hidden[group].includes(key)
-		? hidden[group].filter((k) => k !== key)
-		: [...hidden[group], key];
+	const current = hidden[group] ?? [];
+	let next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
 	if (applicable.length && applicable.every((k) => next.includes(k)))
 		next = next.filter((k) => !applicable.includes(k));
 	return { ...hidden, [group]: next };
@@ -300,7 +308,8 @@ export function buildView(
 	categories: Category[],
 	state: Controls,
 	coverage?: AccountCoverage[],
-	valuations: AccountValuation[] = []
+	valuations: AccountValuation[] = [],
+	tripData?: TripData
 ) {
 	accounts = accounts.filter(
 		(a) =>
@@ -318,7 +327,7 @@ export function buildView(
 	);
 	const { groupBy, bucket, dateStart: start, dateEnd: end } = state;
 	const mode = state.flows.length === 1 ? state.flows[0] : 'signed';
-	const isFlow = state.measure === 'activity' || groupBy === 'category';
+	const isFlow = state.measure === 'activity' || groupBy === 'category' || groupBy === 'trip';
 	// Filter owned pieces after splitting, never remove raw ledger balance effects.
 	if (isFlow)
 		txns = flowPieces(txns)
@@ -341,6 +350,7 @@ export function buildView(
 			: '';
 	const path = node ? lineage(tree, node) : [];
 	const keyOf = (t: Txn) => {
+		if (groupBy === 'trip') return tripFor(t, tripData).key;
 		if (groupBy === 'category') return t.category && drillKey(tree, node, t.category);
 		if (t.standalone)
 			return t.benefitPaid ? BENEFITS_PAID : t.fundedBy ? REWARDS_PAID : FRIEND_PAID;
@@ -381,24 +391,31 @@ export function buildView(
 	};
 	const base = makeBase(start, end, bucket);
 	const registry =
-		groupBy === 'category'
-			? levelKeys(
-					tree,
-					node,
-					new Set(flowPieces(txns).flatMap((t) => (t.category ? [t.category] : [])))
-				).filter((k) => {
-					// A parent's own key holds only its own rows, so only its own kind counts.
-					const c = tree.byName.get(ownerOf(k))!;
-					return k === c.name ? carries(tree, c.id, kinds) : kinds.has(c.kind);
-				})
-			: [
-					...new Set(
-						[...accounts]
-							.sort((a, b) => a.id.localeCompare(b.id))
-							.map((a) => accountGroup(a, groupBy))
-					)
-				];
-	if (groupBy !== 'category') {
+		groupBy === 'trip'
+			? [
+					...(tripData?.trips ?? []).map((t) => tripKey(t.id)),
+					UNASSIGNED_TRIP,
+					AMBIGUOUS_TRIP,
+					...(!tripData || tripData.unavailable ? [UNAVAILABLE_TRIP] : [])
+				]
+			: groupBy === 'category'
+				? levelKeys(
+						tree,
+						node,
+						new Set(flowPieces(txns).flatMap((t) => (t.category ? [t.category] : [])))
+					).filter((k) => {
+						// A parent's own key holds only its own rows, so only its own kind counts.
+						const c = tree.byName.get(ownerOf(k))!;
+						return k === c.name ? carries(tree, c.id, kinds) : kinds.has(c.kind);
+					})
+				: [
+						...new Set(
+							[...accounts]
+								.sort((a, b) => a.id.localeCompare(b.id))
+								.map((a) => accountGroup(a, groupBy))
+						)
+					];
+	if (groupBy !== 'category' && groupBy !== 'trip') {
 		if (txns.some((t) => t.standalone && !t.fundedBy && !t.benefitPaid)) registry.push(FRIEND_PAID);
 		if (txns.some((t) => t.fundedBy)) registry.push(REWARDS_PAID);
 		if (txns.some((t) => t.benefitPaid)) registry.push(BENEFITS_PAID);
@@ -430,7 +447,7 @@ export function buildView(
 		}
 	}
 	const applicable = [...new Set([...base.series.map((s) => s.key), ...currentZeros])];
-	const requested = state.hidden[groupBy];
+	const requested = state.hidden[groupBy] ?? [];
 	const hidden =
 		applicable.length && applicable.every((k) => requested.includes(k))
 			? requested.filter((k) => !applicable.includes(k))
@@ -500,7 +517,12 @@ export function buildView(
 			: mode === 'income'
 				? 'Income'
 				: 'Net flow';
-	const title = path.length ? `${flowTitle} · ${path.map((c) => c.name).join(' › ')}` : flowTitle;
+	const title =
+		groupBy === 'trip'
+			? flowTitle + ' · By trip'
+			: path.length
+				? `${flowTitle} · ${path.map((c) => c.name).join(' › ')}`
+				: flowTitle;
 	const drillable = keys.filter((k) => {
 		const c = tree.byName.get(k);
 		return !!c && tree.children.has(c.id);
@@ -518,7 +540,49 @@ export function buildView(
 		const key = keyOf(t);
 		return !!key && !hidden.includes(key);
 	}).length;
+	const tripReviews =
+		groupBy === 'trip'
+			? txns.flatMap((t) => {
+					if (
+						!t.category ||
+						t.categoryKind === 'transfer' ||
+						t.date < start ||
+						t.date > end ||
+						hidden.includes(AMBIGUOUS_TRIP)
+					)
+						return [];
+					const kind =
+						!t.categoryKind || t.categoryKind === 'unknown'
+							? t.amount < 0
+								? 'spending'
+								: 'income'
+							: t.categoryKind;
+					if (mode !== 'signed' && kind !== mode) return [];
+					const result = tripFor(t, tripData);
+					if (result.key !== AMBIGUOUS_TRIP) return [];
+					return [
+						{
+							reference: t.share_id
+								? 'share:' + t.share_id
+								: t.share_id === null
+									? 'Share reference unavailable'
+									: t.source && t.source_id
+										? 'txn:' + t.source + ':' + t.source_id
+										: 'Reference unavailable',
+							date: t.date,
+							description: t.name || t.note || t.memo || 'Transaction',
+							amount: mode === 'spending' ? -t.amount : t.amount,
+							reason: result.reason,
+							candidates: result.candidates.map((id) => ({
+								id,
+								name: tripLabel(tripKey(id), tripData)
+							}))
+						}
+					];
+				})
+			: [];
 	return {
+		tripReviews,
 		average,
 		data,
 		keys,

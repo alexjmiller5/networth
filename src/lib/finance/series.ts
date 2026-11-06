@@ -222,7 +222,14 @@ export function flowPieces(txns: Txn[]): Txn[] {
 			for (const s of t.shares) {
 				const amount = s.principal ? rest(s.amount, s.principal) : s.amount;
 				if (!amount) continue;
-				const piece = { ...t, shares: undefined, ...s, amount, date: s.date ?? t.date };
+				const piece = {
+					...t,
+					shares: undefined,
+					...s,
+					share_id: s.share_id ?? null,
+					amount,
+					date: s.date ?? t.date
+				};
 				delete piece.internal;
 				delete piece.excluded;
 				delete piece.synthetic;

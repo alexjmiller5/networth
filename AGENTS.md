@@ -6,7 +6,7 @@ protects the site and every API route.
 
 ## Financial data contract
 
-- `/api/finance`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` comes from this project's owning ENV item and is delivered as a
+- `/api/finance`, `/api/trips`, `/api/benefits`, `/api/investments`, and `/api/rewards` are the data paths. `SOMA_HUB_URL` comes from this project's owning ENV item and is delivered as a
   plain deployment variable by `scripts/sync-secrets.sh --deploy`;
   `SOMA_HUB_TOKEN` is this server's own Soma credential, enrolled with a
   read-only profile (broad `tables:read`, since reward and asset reads take
@@ -42,6 +42,23 @@ protects the site and every API route.
   Refund signs, transfer/exclusion rules and uncategorized omission remain intact.
   Balances disable this filter and retain the full raw ledger; its saved choice
   resumes on returning to flows. Category presence never implies review confirmation.
+- By trip is a flow grouping in the same graph and Overview. It lazily reads
+  /api/trips through the existing configured Soma URL and dedicated read token;
+  ordinary finance loads retain their cursor/cache path. The trip endpoint reads
+  registered names and filtered settlement provenance through readEstate, plus
+  bounded GET location_trips/records pages. It returns normalized intervals and
+  identities only, never original stream bodies or credentials. Trip read failure
+  is a non-cacheable error; prior saved trip data stays labelled and available.
+- Each eligible owned flow belongs to one trip series, Unassigned, or temporary
+  Ambiguous trips. A unique valid settlement trip link takes precedence over
+  dates, without changing flow eligibility. Overlapping dates, conflicting
+  interval versions or conflicting/unavailable explicit targets stay ambiguous.
+  Opaque landing IDs do not establish ingestion chronology; identical intervals
+  deduplicate by stable trip ID, and conflicting versions are never first-match.
+  The inline review lists candidate names and stable transaction/share references.
+  Missing identities in older cached shares remain unavailable, never replaced
+  by their parent's identity. Personal trip labels/dates/allocations stay runtime
+  data; no transaction trip column or automatic arrival-day allocation exists.
 - Raw ledger amounts derive monetary balances. Venmo statement evidence
   removes externally funded movements from its balance calculation.
   Shares, categories, exclusions, and stated balances never overwrite raw

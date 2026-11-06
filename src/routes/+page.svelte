@@ -1,5 +1,14 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import IconMapPin from '@tabler/icons-svelte/icons/map-pin';
+	import {
+		tripKey,
+		tripLabel,
+		AMBIGUOUS_TRIP,
+		UNASSIGNED_TRIP,
+		UNAVAILABLE_TRIP,
+		type TripData
+	} from '$lib/finance/trips';
 	import IconFlag from '@tabler/icons-svelte/icons/flag';
 	import MarkersDialog from '$lib/components/MarkersDialog.svelte';
 	import FinanceRunCard from '$lib/components/FinanceRunCard.svelte';
@@ -84,6 +93,39 @@
 	// Noncash assets chart like balance-only accounts; snapshots saved before them have none.
 	const assets = $derived(data.assets ?? []);
 	const accounts = $derived([...data.accounts, ...assets]);
+	let tripData = $state<TripData>();
+	let tripRequested = $state(false);
+	let tripLoading = $state(false);
+	let tripSavedAt = $state<string | null>(null);
+	let tripReadFailed = $state(false);
+	let tripRequest = 0;
+	async function loadTrips(fresh = false) {
+		const request = ++tripRequest;
+		tripRequested = true;
+		tripLoading = true;
+		try {
+			const result = await readDashboard<TripData>('/api/trips', fetch, {
+				timeoutMs: 45_000,
+				refresh: fresh
+			});
+			if (request === tripRequest) {
+				tripData = result.data;
+				tripSavedAt = result.savedAt;
+				tripReadFailed = false;
+			}
+		} catch {
+			if (request === tripRequest) {
+				tripReadFailed = true;
+				if (!tripData) tripData = { trips: [], settlements: {}, unavailable: true };
+			}
+		} finally {
+			if (request === tripRequest) tripLoading = false;
+		}
+	}
+	$effect(() => {
+		if (controls.groupBy === 'trip' && !tripRequested) void loadTrips();
+	});
+
 	let markers = $state<Marker[]>([]);
 	let markersOpen = $state(false);
 	let markersLoaded = $state(false);
@@ -151,7 +193,15 @@
 	);
 	const viewState = $derived({ ...controls, dateStart: range.start, dateEnd: range.end });
 	const view = $derived(
-		buildView(data.txns, accounts, categories, viewState, data.coverage, data.valuations ?? [])
+		buildView(
+			data.txns,
+			accounts,
+			categories,
+			viewState,
+			data.coverage,
+			data.valuations ?? [],
+			tripData
+		)
 	);
 	/** Price date (and carried NAV age) behind an investment account's value at the shown end date. */
 	function pricedAsOf(key: string): string | undefined {
@@ -164,19 +214,26 @@
 		[...list].sort((a, b) => a.id.localeCompare(b.id)).map((a) => accountGroup(a, groupBy));
 	// Assets slot after every existing key so adding one never repaints another series.
 	const paletteKeys = $derived(
-		groupBy === 'category'
-			? [...categories]
-					.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
-					.map((c) => c.name)
-			: [
-					...new Set([
-						...groupKeys(data.accounts),
-						FRIEND_PAID,
-						...groupKeys(assets),
-						REWARDS_PAID,
-						BENEFITS_PAID
-					])
+		groupBy === 'trip'
+			? [
+					...(tripData?.trips ?? []).map((t) => tripKey(t.id)),
+					UNASSIGNED_TRIP,
+					AMBIGUOUS_TRIP,
+					UNAVAILABLE_TRIP
 				]
+			: groupBy === 'category'
+				? [...categories]
+						.sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id))
+						.map((c) => c.name)
+				: [
+						...new Set([
+							...groupKeys(data.accounts),
+							FRIEND_PAID,
+							...groupKeys(assets),
+							REWARDS_PAID,
+							BENEFITS_PAID
+						])
+					]
 	);
 	const drillPath = $derived(view.drill.path);
 	function drill(name: string): void {
@@ -209,7 +266,8 @@
 		bank: 'By bank',
 		type: 'By type',
 		asset: 'By asset class',
-		category: 'By category'
+		category: 'By category',
+		trip: 'By trip'
 	};
 	const excluded = $derived(view.hidden.filter((k) => view.keys.includes(k)));
 	let search = $state('');
@@ -233,6 +291,7 @@
 		security_deposit: 'Security deposits'
 	};
 	function labelFor(key: string, start = viewState.dateStart, end = viewState.dateEnd): string {
+		if (groupBy === 'trip') return tripLabel(key, tripData);
 		if (key === FRIEND_PAID) return 'Friend-paid';
 		if (key === REWARDS_PAID) return 'Points-paid';
 		if (key === BENEFITS_PAID) return 'Benefit-paid';
@@ -274,6 +333,7 @@
 		);
 	}
 	function iconComponent(key: string) {
+		if (groupBy === 'trip') return IconMapPin;
 		if (key === FRIEND_PAID) return IconArrowsDownUp;
 		if (key === REWARDS_PAID) return IconGift;
 		if (groupBy === 'asset')
@@ -309,6 +369,7 @@
 		selectedCoverage.some((c) => c.status !== 'verified' || (c.basis !== 'money' && !c.valuedAsOf))
 	);
 	async function refresh(): Promise<void> {
+		if (controls.groupBy === 'trip') void loadTrips(true);
 		refreshing = true;
 		refreshError = '';
 		try {
@@ -475,7 +536,7 @@
 			onValueChange={(v) => {
 				controls.groupBy = v as GroupBy;
 				// Categories group flows only: balances have no category.
-				if (v === 'category') controls.measure = 'activity';
+				if (v === 'category' || v === 'trip') controls.measure = 'activity';
 			}}
 		>
 			<Select.Trigger class="min-h-9" aria-label="Group by">
@@ -808,6 +869,55 @@
 	{#if !view.applicable.length}<p class="text-sm text-muted-foreground" role="status">
 			No matching data in this date range.
 		</p>{/if}
+
+	{#if groupBy === 'trip'}
+		<p class="text-xs text-muted-foreground" role="status">
+			{tripLoading
+				? 'Loading trip information. Amounts remain in the total.'
+				: !tripData || tripData.unavailable
+					? 'Trip information is unavailable. Refresh to retry; amounts remain in the total.'
+					: 'Trip matching uses recorded dated trip claims. Unassigned entries have no match; overlapping or conflicting claims wait for review.'}
+		</p>
+		{#if tripSavedAt}<p class="text-xs text-muted-foreground">
+				Showing trip information saved {new Date(tripSavedAt).toLocaleString()}.
+			</p>{/if}
+		{#if tripReadFailed && tripData && !tripData.unavailable}<p
+				class="text-xs text-muted-foreground"
+				role="status"
+			>
+				Could not refresh trips. Previous trip information is still shown.
+			</p>{/if}
+		{#if view.tripReviews.length}
+			<details class="rounded-lg border p-3">
+				<summary class="cursor-pointer text-sm font-medium"
+					>Review {view.tripReviews.length} ambiguous {view.tripReviews.length === 1
+						? 'entry'
+						: 'entries'}</summary
+				>
+				<p class="mt-2 text-xs text-muted-foreground">
+					Each amount counts once in Ambiguous trips. Review the candidate trips and use the expense
+					reference when telling your agent the definitive trip.
+				</p>
+				<ul class="mt-3 divide-y">
+					{#each view.tripReviews as entry}
+						<li class="space-y-1 py-3 text-sm">
+							<div class="flex flex-wrap justify-between gap-2">
+								<span>{entry.date} · {entry.description}</span><span class="font-mono"
+									>{money(entry.amount)}</span
+								>
+							</div>
+							<p class="text-xs text-muted-foreground">
+								{entry.reason}: {entry.candidates.map((c) => c.name).join(', ')}
+							</p>
+							<p class="break-all text-xs text-muted-foreground">
+								Reference: <code>{entry.reference}</code>
+							</p>
+						</li>
+					{/each}
+				</ul>
+			</details>
+		{/if}
+	{/if}
 	{#if view.isFlow && view.uncategorized > 0}
 		<p class="text-xs text-muted-foreground" role="status">
 			{view.uncategorized.toLocaleString('en-US')} uncategorized {view.uncategorized === 1

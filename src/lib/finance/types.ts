@@ -61,6 +61,7 @@ export interface AccountCoverage {
 
 /** One person's piece of a shared charge (the estate's `shares` table). */
 export interface TxnShare {
+	share_id?: string;
 	note?: string;
 	group?: string;
 	origin?: string;
@@ -74,6 +75,7 @@ export interface TxnShare {
 }
 
 export interface Txn {
+	share_id?: string | null;
 	origin?: string;
 	counterparty?: string;
 	name?: string;
@@ -124,4 +126,4 @@ export interface PointsBalance {
 }
 
 export type AssetClass = 'cash' | 'investments' | 'deposits';
-export type GroupBy = 'account' | 'bank' | 'type' | 'asset' | 'category';
+export type GroupBy = 'account' | 'bank' | 'type' | 'asset' | 'category' | 'trip';

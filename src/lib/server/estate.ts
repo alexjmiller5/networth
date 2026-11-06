@@ -34,6 +34,7 @@ export const TXN_COLUMNS = [
 // One column list per table, the union of what every route reads, so the
 // routes share one cached copy (another list would re-pull the table in full).
 export const COLUMNS: Record<string, string[]> = {
+	trips: ['id', 'name', 'deleted_at'],
 	accounts: [
 		'id',
 		'bank',
@@ -249,6 +250,11 @@ export const COLUMNS: Record<string, string[]> = {
 // Equality slices of a table too large to copy. Each is re-read whole only
 // when its table's mark moves (the helper's `watch`).
 export const SLICES = {
+	trip_settlements: {
+		table: 'provenance',
+		columns: ['id', 'from_ref', 'to_ref', 'deleted_at'],
+		where: { from_kind: 'txn', to_kind: 'trip', rel: 'settles' }
+	},
 	asset_evidence: {
 		table: 'provenance',
 		columns: ['id', 'to_ref', 'from_kind', 'from_ref', 'deleted_at'],

@@ -253,8 +253,8 @@ describe('flowPieces', () => {
 				date: '2026-03-01',
 				amount: -150,
 				shares: [
-					{ amount: -40, category: 'Rent' },
-					{ amount: -10, category: 'Security Deposit' }
+					{ share_id: 'owned-rent', amount: -40, category: 'Rent' },
+					{ share_id: 'owned-deposit', amount: -10, category: 'Security Deposit' }
 				]
 			}
 		]);
@@ -264,6 +264,7 @@ describe('flowPieces', () => {
 				date: '2026-03-01',
 				amount: -40,
 				category: 'Rent',
+				share_id: 'owned-rent',
 				shares: undefined
 			},
 			{
@@ -271,6 +272,7 @@ describe('flowPieces', () => {
 				date: '2026-03-01',
 				amount: -10,
 				category: 'Security Deposit',
+				share_id: 'owned-deposit',
 				shares: undefined
 			}
 		]);

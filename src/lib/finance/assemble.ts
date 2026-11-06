@@ -185,6 +185,7 @@ export function assemble(t: EstateTables): Estate {
 		if ((s.source == null) !== (s.source_id == null))
 			throw new Error('Incomplete finance share parent');
 		const share: TxnShare = {
+			...(s.id == null ? {} : { share_id: id(s.id) }),
 			date: date(s.date),
 			amount: num(s.amount),
 			category: str(s.category),
