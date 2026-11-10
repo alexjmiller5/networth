@@ -7,22 +7,97 @@ export interface Trip {
 export interface TripData {
 	trips: Trip[];
 	settlements: Record<string, string[]>;
+	assignments?: TripAssignment[];
 	unavailable?: boolean;
+}
+export interface TripAssignment {
+	id: string;
+	piece_kind: 'txn' | 'share';
+	txn_source: string | null;
+	txn_source_id: string | null;
+	share_id: string | null;
+	trip_id: string | null;
+}
+export function tripAssignments(rows: Record<string, unknown>[]): TripAssignment[] {
+	const seen = new Set<string>();
+	return rows
+		.filter((r) => r.deleted_at == null)
+		.map((r) => {
+			const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+			if (
+				!(
+					(r.piece_kind === 'txn' &&
+						text(r.txn_source) &&
+						text(r.txn_source_id) &&
+						r.share_id === null) ||
+					(r.piece_kind === 'share' &&
+						r.txn_source === null &&
+						r.txn_source_id === null &&
+						text(r.share_id))
+				) ||
+				!(r.trip_id === null || text(r.trip_id))
+			)
+				throw Error('Invalid trip assignment');
+			const id = [
+				...new TextEncoder().encode(
+					JSON.stringify([r.piece_kind, r.txn_source, r.txn_source_id, r.share_id])
+				)
+			]
+				.map((b) => b.toString(16).padStart(2, '0'))
+				.join('');
+			if (r.id !== id || seen.has(id)) throw Error('Invalid trip assignment identity');
+			seen.add(id);
+			return {
+				id,
+				piece_kind: r.piece_kind,
+				txn_source: r.txn_source,
+				txn_source_id: r.txn_source_id,
+				share_id: r.share_id,
+				trip_id: r.trip_id
+			} as TripAssignment;
+		});
 }
 export const AMBIGUOUS_TRIP = 'trip:ambiguous';
 export const UNASSIGNED_TRIP = 'trip:unassigned';
 export const UNAVAILABLE_TRIP = 'trip:unavailable';
 export const tripKey = (id: string) => 'trip:id:' + id;
+export function assignmentMatches(a: TripAssignment, t: Txn): boolean {
+	return t.share_id
+		? a.piece_kind === 'share' && a.share_id === t.share_id
+		: t.share_id === undefined &&
+				!t.shares?.length &&
+				!t.standalone &&
+				a.piece_kind === 'txn' &&
+				a.txn_source === t.source &&
+				a.txn_source_id === t.source_id;
+}
 export function tripFor(
 	t: Txn,
 	data?: TripData
 ): { key: string; candidates: string[]; reason: string } {
 	if (!data || data.unavailable)
 		return { key: UNAVAILABLE_TRIP, candidates: [], reason: 'Trip data unavailable' };
-	const explicit = [...new Set(data.settlements[t.source + ':' + t.source_id] ?? [])].sort();
+	const assigned = (data.assignments ?? []).filter((a) => assignmentMatches(a, t));
+	const targets = [...new Set(assigned.map((a) => a.trip_id))];
+	if (targets.length > 1)
+		return {
+			key: AMBIGUOUS_TRIP,
+			candidates: targets.filter((id): id is string => id !== null),
+			reason: 'Conflicting trip assignments'
+		};
+	const explicit = [
+		...new Set([
+			...(data.settlements[t.source + ':' + t.source_id] ?? []),
+			...targets.filter((id): id is string => id !== null)
+		])
+	].sort();
 	if (explicit.length) {
 		if (explicit.length === 1 && data.trips.some((x) => x.id === explicit[0]))
-			return { key: tripKey(explicit[0]), candidates: explicit, reason: 'Settlement link' };
+			return {
+				key: tripKey(explicit[0]),
+				candidates: explicit,
+				reason: targets[0] ? 'Owner assignment' : 'Settlement link'
+			};
 		return {
 			key: AMBIGUOUS_TRIP,
 			candidates: explicit,

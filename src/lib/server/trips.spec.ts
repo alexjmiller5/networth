@@ -1,5 +1,69 @@
 import { expect, it, vi } from 'vitest';
 import { readTripClaims } from './trips';
+
+it('cancels before decoding an oversized chunk and never consumes later chunks', async () => {
+	let pulls = 0;
+	let cancelled = false;
+	const stream = new ReadableStream<Uint8Array>(
+		{
+			pull(controller) {
+				pulls++;
+				controller.enqueue(new Uint8Array(pulls === 1 ? 1_000_001 : 5));
+				if (pulls === 3) controller.close();
+			},
+			cancel() {
+				cancelled = true;
+			}
+		},
+		{ highWaterMark: 0 }
+	);
+	const first = JSON.stringify({ entries: [], next_cursor: 'next' }).padEnd(3_000_000, ' ');
+	const fetcher = vi.fn(async (url: string) =>
+		url.includes('cursor=') ? new Response(stream) : new Response(first)
+	);
+	await expect(
+		readTripClaims({ hub: 'https://hub.test', token: 'synthetic-only', fetch: fetcher as never })
+	).rejects.toThrow('Trip stream read limit');
+	expect(cancelled).toBe(true);
+	expect(pulls).toBe(1);
+});
+
+it('decodes split UTF-8 incrementally and rejects malformed bytes', async () => {
+	const bytes = new TextEncoder().encode(
+		JSON.stringify({
+			entries: [{ id: 'one', body: JSON.stringify({ label: 'café' }) }],
+			next_cursor: null
+		})
+	);
+	const split = bytes.indexOf(0xc3) + 1;
+	const response = new Response(
+		new ReadableStream({
+			start(c) {
+				c.enqueue(bytes.slice(0, split));
+				c.enqueue(bytes.slice(split));
+				c.close();
+			}
+		})
+	);
+	expect(
+		await readTripClaims({
+			hub: 'https://hub.test',
+			token: 'synthetic-only',
+			fetch: (async () => response) as typeof fetch
+		})
+	).toEqual([{ label: 'café' }]);
+	// Keep JSON valid under replacement decoding, so only strict UTF-8 rejects it.
+	const invalidBytes = bytes.slice();
+	invalidBytes[split] = 0x20;
+	const invalid = new Response(invalidBytes);
+	await expect(
+		readTripClaims({
+			hub: 'https://hub.test',
+			token: 'synthetic-only',
+			fetch: (async () => invalid) as typeof fetch
+		})
+	).rejects.toThrow();
+});
 const source = (fetch: typeof globalThis.fetch) => ({
 	hub: 'https://hub.test',
 	token: 'synthetic-only',

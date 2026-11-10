@@ -46,9 +46,15 @@ it('projects registered dated claims and settlement identities without raw strea
 		trips: [
 			{ id: 't1', name: 'Trip one', intervals: [{ start: '2026-01-01', end: '2026-01-03' }] }
 		],
-		settlements: { 'bank:x': ['t1'] }
+		settlements: { 'bank:x': ['t1'] },
+		assignments: []
 	});
 	expect(JSON.stringify(data)).not.toContain('Synthetic city');
+	expect(
+		hub.requests.some(
+			(r) => r.path === '/v1/cursor' && JSON.stringify(r.body).includes('expense_trip_assignments')
+		)
+	).toBe(true);
 });
 it('marks a failed trip source unavailable without inventing unassigned trip coverage', async () => {
 	await expect(

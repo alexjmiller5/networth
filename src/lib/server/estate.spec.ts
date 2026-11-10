@@ -14,6 +14,42 @@ const ids = (rows: Record<string, unknown>[]) => rows.map((r) => r.id);
 const paths = (hub: ReturnType<typeof fakeHub>) => hub.requests.map((r) => r.path);
 
 describe('estate reads', () => {
+	it('invalidates the assignment projection for create, reassignment and clear while trips stay quiet', async () => {
+		const hub = fakeHub({ trips: [{ id: 't1', name: 'Trip' }], expense_trip_assignments: [] });
+		const db = cache();
+		const read = () => readEstate(source(hub, db), ['trips', 'expense_trip_assignments']);
+		expect((await read()).rows.expense_trip_assignments).toEqual([]);
+		hub.requests.length = 0;
+		await read();
+		expect(paths(hub)).toEqual(['/v1/cursor']);
+		for (const [trip_id, stamp] of [
+			['t1', at(2)],
+			['t2', at(3)],
+			[null, at(4)]
+		] as const) {
+			hub.put(
+				'expense_trip_assignments',
+				{
+					id: 'assignment',
+					piece_kind: 'txn',
+					txn_source: 'bank',
+					txn_source_id: 'expense',
+					share_id: null,
+					trip_id
+				},
+				stamp
+			);
+			hub.requests.length = 0;
+			const result = await read();
+			expect(result.rows.expense_trip_assignments).toMatchObject([
+				{ trip_id, txn_source_id: 'expense' }
+			]);
+			expect(hub.pulls().map((p) => p.table)).toEqual(['expense_trip_assignments']);
+			hub.requests.length = 0;
+			await read();
+			expect(paths(hub)).toEqual(['/v1/cursor']);
+		}
+	});
 	it('pulls every table in one batch, then answers a quiet load with one cursor request', async () => {
 		const hub = fakeHub({
 			accounts: [

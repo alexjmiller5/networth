@@ -1,6 +1,7 @@
 import type { EstateSource, HubRow } from './estate';
 import { readEstate } from './estate';
-import { tripRegistry, type TripData } from '$lib/finance/trips';
+import { tripRegistry, tripAssignments, type TripData } from '$lib/finance/trips';
+import { boundedBody } from './bounded-body';
 export async function readTripClaims(
 	source: Pick<EstateSource, 'hub' | 'token' | 'fetch'>
 ): Promise<HubRow[]> {
@@ -25,9 +26,9 @@ export async function readTripClaims(
 			continue;
 		}
 		if (!response.ok) throw Error('Trip stream read unavailable');
-		const text = await response.text();
-		bytes += new TextEncoder().encode(text).length;
-		if (bytes > 4000000) throw Error('Trip stream read limit');
+		const result = await boundedBody(response, 4000000 - bytes);
+		bytes += result.bytes;
+		const text = result.text;
 		const body = JSON.parse(text);
 		if (
 			!Array.isArray(body.entries) ||
@@ -62,7 +63,7 @@ export async function readTripClaims(
 export async function readTrips(source: EstateSource): Promise<TripData> {
 	try {
 		const [{ rows }, claims] = await Promise.all([
-			readEstate(source, ['trips'], { slices: ['trip_settlements'] }),
+			readEstate(source, ['trips', 'expense_trip_assignments'], { slices: ['trip_settlements'] }),
 			readTripClaims(source)
 		]);
 		const settlements: Record<string, string[]> = {};
@@ -77,7 +78,11 @@ export async function readTrips(source: EstateSource): Promise<TripData> {
 				throw Error('Invalid settlement identity');
 			(settlements[row.from_ref] ??= []).push(row.to_ref);
 		}
-		return { trips: tripRegistry(rows.trips ?? [], claims), settlements };
+		return {
+			trips: tripRegistry(rows.trips ?? [], claims),
+			settlements,
+			assignments: tripAssignments(rows.expense_trip_assignments ?? [])
+		};
 	} catch {
 		return { trips: [], settlements: {}, unavailable: true };
 	}

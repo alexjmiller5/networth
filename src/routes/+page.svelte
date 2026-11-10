@@ -108,6 +108,8 @@
 				timeoutMs: 45_000,
 				refresh: fresh
 			});
+			if (!Array.isArray(result.data.assignments))
+				throw Error('Trip assignment coverage unavailable');
 			if (request === tripRequest) {
 				tripData = result.data;
 				tripSavedAt = result.savedAt;
@@ -912,6 +914,27 @@
 							<p class="break-all text-xs text-muted-foreground">
 								Reference: <code>{entry.reference}</code>
 							</p>
+						</li>
+					{/each}
+				</ul>
+			</details>
+		{/if}
+		{#if view.staleTripAssignments.length}
+			<details class="rounded-lg border p-3">
+				<summary class="cursor-pointer text-sm font-medium"
+					>Review {view.staleTripAssignments.length} stale trip decisions</summary
+				>
+				<p class="mt-2 text-xs text-muted-foreground">
+					These references no longer match an eligible owned expense. They do not change totals.
+				</p>
+				<ul class="mt-2 space-y-1 break-all text-xs text-muted-foreground">
+					{#each view.staleTripAssignments as assignment (assignment.id)}
+						<li>
+							<code
+								>{assignment.piece_kind === 'share'
+									? 'share:' + assignment.share_id
+									: 'txn:' + assignment.txn_source + ':' + assignment.txn_source_id}</code
+							>
 						</li>
 					{/each}
 				</ul>

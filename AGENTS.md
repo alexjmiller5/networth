@@ -56,6 +56,13 @@ protects the site and every API route.
   Opaque landing IDs do not establish ingestion chronology; identical intervals
   deduplicate by stable trip ID, and conflicting versions are never first-match.
   The inline review lists candidate names and stable transaction/share references.
+  `expense_trip_assignments` supplies owner-confirmed current decisions for one
+  exact unsplit ledger identity or owned share. A nonnull decision takes precedence
+  over dates; disagreement with applicable settlement evidence stays ambiguous.
+  Clearing its trip returns to date inference. The assignment table participates
+  in the estate cursor/cache read, and older snapshots without assignment coverage
+  are unavailable. Raw review descriptions are concealed with amounts because
+  names, notes and memos may themselves contain monetary values.
   Missing identities in older cached shares remain unavailable, never replaced
   by their parent's identity. Personal trip labels/dates/allocations stay runtime
   data; no transaction trip column or automatic arrival-day allocation exists.

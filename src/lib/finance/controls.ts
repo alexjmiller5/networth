@@ -1,4 +1,5 @@
 import {
+	assignmentMatches,
 	tripFor,
 	tripKey,
 	tripLabel,
@@ -311,6 +312,16 @@ export function buildView(
 	valuations: AccountValuation[] = [],
 	tripData?: TripData
 ) {
+	const ownedPieces =
+		state.groupBy === 'trip' && tripData?.assignments?.length
+			? flowPieces(txns).filter((t) => t.category && t.categoryKind !== 'transfer')
+			: [];
+	const staleTripAssignments =
+		state.groupBy === 'trip'
+			? (tripData?.assignments ?? []).filter(
+					(a) => a.trip_id !== null && !ownedPieces.some((t) => assignmentMatches(a, t))
+				)
+			: [];
 	accounts = accounts.filter(
 		(a) =>
 			state.accountStatuses.includes(a.closed ? 'closed' : 'open') &&
@@ -570,7 +581,9 @@ export function buildView(
 										? 'txn:' + t.source + ':' + t.source_id
 										: 'Reference unavailable',
 							date: t.date,
-							description: t.name || t.note || t.memo || 'Transaction',
+							description: state.hideAmounts
+								? 'Transaction'
+								: t.name || t.note || t.memo || 'Transaction',
 							amount: mode === 'spending' ? -t.amount : t.amount,
 							reason: result.reason,
 							candidates: result.candidates.map((id) => ({
@@ -583,6 +596,7 @@ export function buildView(
 			: [];
 	return {
 		tripReviews,
+		staleTripAssignments,
 		average,
 		data,
 		keys,

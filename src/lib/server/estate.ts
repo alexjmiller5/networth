@@ -35,6 +35,15 @@ export const TXN_COLUMNS = [
 // routes share one cached copy (another list would re-pull the table in full).
 export const COLUMNS: Record<string, string[]> = {
 	trips: ['id', 'name', 'deleted_at'],
+	expense_trip_assignments: [
+		'id',
+		'piece_kind',
+		'txn_source',
+		'txn_source_id',
+		'share_id',
+		'trip_id',
+		'deleted_at'
+	],
 	accounts: [
 		'id',
 		'bank',

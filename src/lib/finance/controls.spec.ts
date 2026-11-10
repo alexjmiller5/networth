@@ -1247,6 +1247,198 @@ it('reconciles By trip with the same flows through every period and overview', (
 	});
 });
 
+it('conceals raw trip review names, notes and memos while preserving dates and exact identities', () => {
+	const data = {
+		trips: [
+			{ id: 'a', name: 'Trip A', intervals: [{ start: min, end: max }] },
+			{ id: 'b', name: 'Trip B', intervals: [{ start: min, end: max }] }
+		],
+		settlements: {}
+	};
+	for (const field of ['name', 'note', 'memo'] as const) {
+		const rows = [
+			{
+				source: 'bank',
+				source_id: 'expense',
+				account_id: 'account-1',
+				date: min,
+				amount: -12,
+				category: 'Category 1',
+				categoryKind: 'spending' as const,
+				[field]: 'Synthetic merchant 12.00 EUR'
+			}
+		];
+		const selection = state({ groupBy: 'trip', flows: ['spending'] });
+		const visible = buildView(rows, accounts, categories, selection, undefined, [], data);
+		const hidden = buildView(
+			rows,
+			accounts,
+			categories,
+			{ ...selection, hideAmounts: true },
+			undefined,
+			[],
+			data
+		);
+		expect(visible.tripReviews[0].description).toBe('Synthetic merchant 12.00 EUR');
+		expect(hidden.tripReviews[0].description).toBe('Transaction');
+		expect(hidden.tripReviews[0]).toMatchObject({
+			date: min,
+			reference: 'txn:bank:expense',
+			candidates: visible.tripReviews[0].candidates
+		});
+		expect(hidden.total).toBe(visible.total);
+		expect(rows[0][field]).toBe('Synthetic merchant 12.00 EUR');
+	}
+});
+
+it('keeps assigned dated shares and refunds in their own periods without promoting excluded expenses', () => {
+	const rows = [
+		{
+			source: 'bank',
+			source_id: 'parent',
+			account_id: 'account-1',
+			date: min,
+			amount: -100,
+			shares: [
+				{
+					share_id: 'owned',
+					date: max,
+					amount: -20,
+					category: 'Category 1',
+					categoryKind: 'spending' as const
+				}
+			]
+		},
+		{
+			source: 'bank',
+			source_id: 'refund',
+			account_id: 'account-1',
+			date: max,
+			amount: 5,
+			category: 'Category 1',
+			categoryKind: 'spending' as const
+		},
+		{
+			source: 'bank',
+			source_id: 'excluded',
+			account_id: 'account-1',
+			date: max,
+			amount: -999,
+			excluded: true,
+			category: 'Category 1'
+		}
+	];
+	const data = {
+		trips: [{ id: 'a', name: 'A', intervals: [{ start: min, end: min }] }],
+		settlements: {},
+		assignments: [
+			{
+				id: 'share-row',
+				piece_kind: 'share' as const,
+				txn_source: null,
+				txn_source_id: null,
+				share_id: 'owned',
+				trip_id: 'a'
+			},
+			{
+				id: 'refund-row',
+				piece_kind: 'txn' as const,
+				txn_source: 'bank',
+				txn_source_id: 'refund',
+				share_id: null,
+				trip_id: 'a'
+			},
+			{
+				id: 'excluded-row',
+				piece_kind: 'txn' as const,
+				txn_source: 'bank',
+				txn_source_id: 'excluded',
+				share_id: null,
+				trip_id: 'a'
+			}
+		]
+	};
+	for (const bucket of ['day', 'week', 'month', 'year'] as const) {
+		const selection = state({
+			groupBy: 'trip',
+			bucket,
+			measure: 'activity',
+			flows: ['spending'],
+			activePreset: '',
+			dateStart: max,
+			dateEnd: max,
+			cumulativeChoice: false
+		});
+		const view = buildView(rows, accounts, categories, selection, undefined, [], data);
+		expect(view.total).toBe(15);
+		expect(view.summary.find((r) => r.key === 'trip:id:a')?.value).toBe(15);
+		expect(view.tripReviews).toEqual([]);
+		const earlier = buildView(
+			rows,
+			accounts,
+			categories,
+			{ ...selection, dateStart: min, dateEnd: min },
+			undefined,
+			[],
+			data
+		);
+		expect(earlier.total).toBe(0);
+	}
+});
+
+it('reports stale assigned piece identities independently of date and account filters', () => {
+	const assignment = (source_id: string) => ({
+		id: source_id,
+		piece_kind: 'txn' as const,
+		txn_source: 'bank',
+		txn_source_id: source_id,
+		share_id: null,
+		trip_id: 'a'
+	});
+	const rows = [
+		{
+			source: 'bank',
+			source_id: 'eligible',
+			account_id: 'account-1',
+			date: min,
+			amount: -10,
+			category: 'Category 1'
+		},
+		{
+			source: 'bank',
+			source_id: 'excluded',
+			account_id: 'account-1',
+			date: min,
+			amount: -20,
+			category: 'Category 1',
+			excluded: true
+		}
+	];
+	const data = {
+		trips: [{ id: 'a', name: 'A', intervals: [] }],
+		settlements: {},
+		assignments: [assignment('eligible'), assignment('excluded'), assignment('deleted')]
+	};
+	const view = buildView(
+		rows,
+		accounts,
+		categories,
+		state({
+			groupBy: 'trip',
+			flows: ['spending'],
+			accountStatuses: ['closed'],
+			activePreset: '',
+			dateStart: max,
+			dateEnd: max
+		}),
+		undefined,
+		[],
+		data
+	);
+	expect(view.staleTripAssignments.map((a) => a.txn_source_id)).toEqual(['excluded', 'deleted']);
+	expect(view.total).toBe(0);
+});
+
 it('does not offer a parent expense reference as a definitive identity for an old split snapshot', () => {
 	const rows = [
 		{
