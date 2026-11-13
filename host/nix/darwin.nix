@@ -18,6 +18,8 @@ let
     NETWORTH_URL = cfg.url;
     NETWORTH_HOST_STATE_DIR = cfg.stateDir;
     NETWORTH_HOST_HERDR_SESSION = cfg.herdrSession;
+    NETWORTH_HOST_RUNTIME = cfg.runtime;
+    NETWORTH_HOST_CORE = cfg.core;
     NETWORTH_HOST_POLL_SECONDS = toString cfg.pollSeconds;
   }
   // lib.optionalAttrs (cfg.herdrWorkspace != null) {
@@ -70,10 +72,22 @@ in
       description = "Herdr server session that receives the agent tabs.";
     };
 
+    runtime = lib.mkOption {
+      type = lib.types.enum [ "tui" "core" ];
+      default = "tui";
+      description = "Legacy TUI or native desktop core; finish active legacy runs before changing.";
+    };
+
+    core = lib.mkOption {
+      type = lib.types.str;
+      default = "herdr-core";
+      description = "Native core executable on the service PATH.";
+    };
+
     herdrWorkspace = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Herdr workspace id for new tabs (default: Herdr's choice).";
+      description = "TUI workspace id, or required existing native space id when runtime is core.";
       example = "w1";
     };
 
@@ -87,7 +101,7 @@ in
       type = lib.types.str;
       default = "/etc/profiles/per-user/${cfg.user}/bin:/run/current-system/sw/bin:/usr/bin:/bin";
       defaultText = lib.literalExpression ''"/etc/profiles/per-user/''${user}/bin:/run/current-system/sw/bin:/usr/bin:/bin"'';
-      description = "PATH for the daemon; must contain herdr.";
+      description = "PATH for the daemon; must contain the selected Herdr runtime and agent CLIs.";
     };
 
     stateDir = lib.mkOption {

@@ -565,3 +565,16 @@ deploys target his Cloudflare account.
 - Tests: `bun run test` (stores and routes) and
   `cd host && uv run --no-project --with pytest pytest -q tests`. The nix build
   runs the host tests too.
+- Native desktop launch is opt-in through the host module's `runtime = "core"`
+  and an explicit existing native space in `herdrWorkspace`. The environment
+  equivalents are `NETWORTH_HOST_RUNTIME` and `NETWORTH_HOST_CORE`. Finish any
+  active legacy run before switching; receipts never migrate sessions.
+  Native startup runs Claude once with run ownership labels, waits for reported
+  idle, and sends through the core with `if=idle`. It preserves auth/trust
+  failures for review instead of spawning a fallback agent. Initial and cancel
+  delivery phases persist in the existing receipt; uncertain acknowledgements
+  never replay. Known native conversation identities must match on adoption.
+  Only existing public API detail fields are reported; native terminal addresses
+  remain in the host receipt rather than fabricated TUI tab/pane IDs. Only the
+  caller's site URL and report state directory reach the agent environment;
+  the host credential and its lookup command stay with the host.

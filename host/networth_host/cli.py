@@ -58,6 +58,12 @@ class Config:
     watch_seconds: int = 10
     cancel_timeout: int = 600
     token_command: list[str] | None = None
+    runtime: str = "tui"
+    core: str = "herdr-core"
+
+    def __post_init__(self):
+        if self.runtime not in {"tui", "core"}:
+            raise ValueError("runtime must be tui or core")
 
     @classmethod
     def from_env(cls, url=None):
@@ -74,6 +80,8 @@ class Config:
             herdr_session=env.get("NETWORTH_HOST_HERDR_SESSION", "default"),
             poll_seconds=int(env.get("NETWORTH_HOST_POLL_SECONDS", "25")),
             token_command=json.loads(command) if command else None,
+            runtime=env.get("NETWORTH_HOST_RUNTIME", "tui"),
+            core=env.get("NETWORTH_HOST_CORE", "herdr-core"),
         )
 
 
@@ -264,6 +272,30 @@ class Herdr:
         return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
+class Core:
+    def __init__(self, executable="herdr-core"):
+        self.executable = executable
+
+    def rpc(self, method, **params):
+        try:
+            result = subprocess.run(
+                [self.executable, "connect"],
+                input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}) + "\n",
+                capture_output=True,
+                text=True,
+                timeout=75,
+            )
+            reply = json.loads(result.stdout)
+            if "error" in reply:
+                error = reply["error"]
+                raise HerdrError(error.get("data", {}).get("kind", "failed"), error["message"])
+            if result.returncode or not isinstance(reply.get("result"), dict):
+                raise ValueError("missing result")
+            return reply["result"]
+        except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError, AttributeError):
+            raise HerdrError("unavailable", "Native core request was not acknowledged") from None
+
+
 class Host:
     def __init__(self, cfg, api, herdr, sleep=time.sleep, clock=time.monotonic):
         self.cfg, self.api, self.herdr, self.sleep, self.clock = cfg, api, herdr, sleep, clock
@@ -318,7 +350,10 @@ class Host:
                     self.api.patch(run_id, status=status, summary=LOST)
                 return
             if run["status"] == "claimed" and local:  # restarted before reporting running
-                self.api.patch(run_id, status="running", **{k: v for k, v in local.items() if k != "run_id"})
+                fields = {
+                    k: local[k] for k in ("tab_id", "pane_id", "tab_label", "agent_name", "agent_kind") if k in local
+                }
+                self.api.patch(run_id, status="running", **fields)
             self.watch(run_id, name)
             return
         if run["cancel_requested"]:
@@ -408,6 +443,9 @@ class Host:
                 return False
             raise
 
+    def cancel_prompt(self, name, run_id):
+        self.herdr("agent", "prompt", name, CANCEL.format(run_id=run_id))
+
     def watch(self, run_id, name):
         cancel_seen, prompted = None, False
         while not self.deliver(run_id):
@@ -418,7 +456,7 @@ class Host:
                 cancel_seen = self.clock() if cancel_seen is None else cancel_seen
                 if not prompted:
                     try:
-                        self.herdr("agent", "prompt", name, CANCEL.format(run_id=run_id))
+                        self.cancel_prompt(name, run_id)
                         prompted = True
                     except HerdrError as error:
                         log(f"cancel prompt for {name} not delivered yet: {error}")
@@ -431,6 +469,159 @@ class Host:
                     self.api.patch(run_id, status=status, summary="The agent exited without reporting.")
                 return
             self.sleep(self.cfg.watch_seconds)
+
+
+class NativeHost(Host):
+    """Opt-in native consumer; uncertain startup/delivery stays for operator review."""
+
+    def _handle(self, run):
+        active = self.active()
+        if active and active.get("runtime") != "core":
+            raise HerdrError("configuration", "Finish the active legacy run before changing runtime")
+        if active and active["run_id"] != run["id"]:
+            raise HerdrError("unsafe_adoption", "Active native receipt belongs to another run")
+        self.run_id = run["id"]
+        if active and active.get("native_phase") != "delivered" and self.deliver(run["id"]):
+            return
+        if (
+            run["status"] not in ACTIVE
+            or (active or {}).get("native_phase") == "delivered"
+            or (not active and run.get("agent_name"))
+        ):
+            return super()._handle(run)
+        if run["cancel_requested"]:
+            if active:
+                return self.watch(run["id"], active["agent_name"])
+            self.api.patch(
+                run["id"], status="canceled", summary="Canceled before initial prompt delivery; terminal preserved."
+            )
+            return
+        details = self.launch(run)
+        self.api.patch(run["id"], status="running", **details)
+        self.watch(run["id"], details["agent_name"])
+
+    def record(self, name, run_id):
+        try:
+            record = self.herdr.rpc("terminal.get", terminal=name)
+        except HerdrError as error:
+            if error.code == "not_found":
+                return None
+            raise
+        labels = record.get("labels", {})
+        active = self.active() or {}
+        expected = active.get("native_session")
+        if (
+            labels.get("networth.run") != run_id
+            or labels.get("networth.agent") != "claude"
+            or (active.get("native_terminal") and record.get("address") != active["native_terminal"])
+            or (expected and labels.get("session.id") != expected)
+        ):
+            raise HerdrError("unsafe_adoption", "Native terminal belongs to another run or conversation")
+        return record
+
+    def launch(self, run):
+        if not self.cfg.workspace:
+            raise HerdrError("configuration", "Native launch requires an explicit space")
+        spaces = (self.herdr.rpc("doc.get", name="herdr-app").get("value") or {}).get("spaces", [])
+        if not any(s.get("id") == self.cfg.workspace for s in spaces):
+            raise HerdrError("configuration", "Native space does not exist")
+        name = "finance-run-" + run["id"][:8]
+        active = self.active()
+        if active and (active.get("runtime") != "core" or active["run_id"] != run["id"]):
+            raise HerdrError("unsafe_adoption", "Active receipt belongs to another runtime or run")
+        record = self.record(name, run["id"])
+        if active and active.get("native_phase") == "delivering":
+            raise HerdrError("uncertain_delivery", "Inspect native terminal; initial prompt will not repeat")
+        details = {
+            "agent_name": name,
+            "agent_kind": "claude",
+            "tab_label": (active or {}).get("tab_label") or self.label(),
+        }
+        if not active:
+            if record:
+                raise HerdrError("unsafe_adoption", "Native terminal has no local delivery receipt")
+            self.remember(run["id"], {**details, "runtime": "core", "native_phase": "starting"})
+            record = self.herdr.rpc(
+                "terminal.run",
+                name=name,
+                argv=["claude"],
+                cwd=str(Path.home()),
+                no_parent=True,
+                no_notify=True,
+                env={"NETWORTH_URL": self.cfg.url, "NETWORTH_HOST_STATE_DIR": str(self.cfg.state_dir)},
+                labels={
+                    "herdr.space": self.cfg.workspace,
+                    "networth.run": run["id"],
+                    "networth.agent": "claude",
+                    "session.title": details["tab_label"][:24],
+                },
+            )
+        if not record or record.get("state") != "live":
+            raise HerdrError("uncertain_delivery", "Native terminal missing; no second agent will start")
+        if active and active.get("native_phase") == "delivered":
+            return details
+        blank = {**self.active(), "native_phase": "blank", "native_terminal": record["address"]}
+        session = record.get("labels", {}).get("session.id")
+        if session:
+            blank["native_session"] = session
+        self.remember(run["id"], blank)
+        ready = self.herdr.rpc("terminal.wait", terminal=record["address"], timeout=60)
+        if ready.get("status") != "idle" or ready.get("reason") != "status":
+            raise HerdrError("not_ready", "Native agent is not idle; terminal preserved for auth/trust review")
+        record = self.record(name, run["id"])
+        if not record or record.get("state") != "live":
+            raise HerdrError("unsafe_adoption", "Native terminal changed before prompt delivery")
+        receipt = {**self.active(), "native_phase": "delivering"}
+        session = record.get("labels", {}).get("session.id")
+        if session:
+            receipt["native_session"] = session
+        self.remember(run["id"], receipt)
+        try:
+            sent = self.herdr.rpc(
+                "terminal.send",
+                terminal=record["address"],
+                text=INSTRUCTION.format(run_id=run["id"], accounts=", ".join(run["account_ids"])),
+                **{"if": "idle"},
+            )
+        except HerdrError as error:
+            if error.code in {"blocked", "status_mismatch"}:
+                self.remember(run["id"], {**self.active(), "native_phase": "blank"})
+                raise
+            raise HerdrError("uncertain_delivery", "Native prompt acknowledgement lost; inspect terminal") from None
+        if sent.get("started") is not True:
+            raise HerdrError("uncertain_delivery", "Native prompt did not acknowledge work; inspect terminal")
+        self.remember(run["id"], {**self.active(), "native_phase": "delivered"})
+        return details
+
+    def alive(self, name):
+        run_id = (self.active() or {}).get("run_id") or self.run_id
+        record = self.record(name, run_id)
+        return bool(record and record.get("state") == "live")
+
+    def cancel_prompt(self, name, run_id):
+        receipt = self.active()
+        if not receipt or receipt.get("runtime") != "core":
+            raise HerdrError("unsafe_adoption", "Cancellation requires the native delivery receipt")
+        if receipt.get("cancel_delivery"):
+            return
+        record = self.record(name, run_id)
+        if not record or record.get("state") != "live":
+            raise HerdrError("not_found", "Native terminal is not live")
+        ready = self.herdr.rpc("terminal.wait", terminal=record["address"], timeout=0)
+        if ready.get("status") != "idle" or ready.get("reason") != "status":
+            raise HerdrError("not_ready", "Wait for native agent idle before cancellation prompt")
+        self.remember(run_id, {**receipt, "cancel_delivery": "delivering"})
+        try:
+            sent = self.herdr.rpc(
+                "terminal.send", terminal=record["address"], text=CANCEL.format(run_id=run_id), **{"if": "idle"}
+            )
+        except HerdrError as error:
+            if error.code in {"blocked", "status_mismatch"}:
+                self.remember(run_id, {**self.active(), "cancel_delivery": None})
+            raise
+        if sent.get("started") is not True:
+            raise HerdrError("uncertain_delivery", "Cancellation acknowledgement lost; no resend")
+        self.remember(run_id, {**self.active(), "cancel_delivery": "delivered"})
 
 
 def poll_once(cfg, host, api):
@@ -450,7 +641,8 @@ def poll_once(cfg, host, api):
 
 def serve(cfg):
     api = Api(cfg.url, token_source(cfg))
-    host, delay = Host(cfg, api, Herdr(cfg)), 5
+    host = NativeHost(cfg, api, Core(cfg.core)) if cfg.runtime == "core" else Host(cfg, api, Herdr(cfg))
+    delay = 5
     log(f"polling {cfg.url}")
     while True:
         started = time.monotonic()

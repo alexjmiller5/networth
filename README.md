@@ -213,6 +213,15 @@ Revoke the host on `/hosts`; enroll again on a replacement machine. The
 
 Host tests: `cd host && uv run --no-project --with pytest pytest -q tests`.
 
+For native Herdr, set the host module's `runtime = "core"` and
+`herdrWorkspace` to an existing native space ID. `core` selects its executable
+(default `herdr-core`). Finish active legacy runs before changing runtime.
+The host starts one Claude terminal and preserves startup/auth failures for
+inspection; it does not launch a second native agent as a fallback. It resumes
+the owned terminal after a host restart and never repeats a prompt whose
+delivery is uncertain. Cancellation is cooperative and waits for agent idle;
+it does not kill sessions. Site URL, enrollment and credentials are unchanged.
+
 ## Offline use
 
 Open the dashboard online once and let it finish loading. Later launches can use
