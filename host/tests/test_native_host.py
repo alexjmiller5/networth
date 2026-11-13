@@ -257,6 +257,30 @@ def test_native_cancel_is_persisted_and_not_repeated_after_lost_ack(native):
     assert sum(m == "terminal.send" for m, _ in core.calls) == 2
 
 
+@pytest.mark.parametrize("replacement", ["session", "terminal"])
+def test_native_cancel_revalidates_ownership_after_readiness(native, replacement):
+    host, core = native
+    host.launch(run())
+    rpc = core.rpc
+
+    def replaced(method, **params):
+        result = rpc(method, **params)
+        if method == "terminal.wait":
+            if replacement == "session":
+                core.record["labels"]["session.id"] = "replacement"
+            else:
+                core.record["address"] = "t-replacement"
+        return result
+
+    core.rpc = replaced
+    with pytest.raises(HerdrError, match="unsafe_adoption"):
+        host.cancel_prompt(NAME, RUN_ID)
+    # The only send was the original launch, never cancellation to the replacement.
+    assert sum(m == "terminal.send" for m, _ in core.calls) == 1
+    host.cancel_prompt(NAME, RUN_ID)
+    assert sum(m == "terminal.send" for m, _ in core.calls) == 1
+
+
 def test_native_requires_explicit_existing_space(native):
     host, core = native
     host.cfg.workspace = "missing"

@@ -10,6 +10,7 @@ import re
 import secrets
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -234,14 +235,56 @@ def enroll(cfg, label, store=None, sleep=time.sleep):
 # --- agent reports (the agent's shell cannot read the Keychain; the daemon delivers) ---
 
 
+def _sync_receipt(fd):
+    os.fsync(fd)
+    if sys.platform == "darwin":
+        import fcntl
+
+        fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+
+
+def _sync_receipt_directory(directory):
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        _sync_receipt(fd)
+    finally:
+        os.close(fd)
+
+
+def _write_receipt(path, value):
+    missing, directory = [], path.parent
+    while not directory.exists():
+        missing.append(directory)
+        directory = directory.parent
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Commit new namespace entries too; an existing directory may follow a failed prior sync.
+    for directory in reversed(missing or [path.parent]):
+        _sync_receipt_directory(directory.parent)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            json.dump(value, stream)
+            stream.flush()
+            _sync_receipt(stream.fileno())
+            os.replace(temporary, path)
+            _sync_receipt_directory(path.parent)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def _remove_receipt(path):
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    _sync_receipt_directory(path.parent)
+
+
 def queue_report(state_dir, run_id, status, summary):
     if not RUN_ID.match(run_id) or status not in {"done", "failed", "canceled"}:
         raise ValueError("expected a run id and --status done|failed|canceled")
-    folder = Path(state_dir) / "reports"
-    folder.mkdir(parents=True, exist_ok=True)
-    path, tmp = folder / f"{run_id}.json", folder / f".{run_id}.tmp"
-    tmp.write_text(json.dumps({"status": status, "summary": " ".join(summary.split())[:1000] or "No summary."}))
-    os.replace(tmp, path)
+    path = Path(state_dir) / "reports" / f"{run_id}.json"
+    _write_receipt(path, {"status": status, "summary": " ".join(summary.split())[:1000] or "No summary."})
     return path
 
 
@@ -313,14 +356,10 @@ class Host:
             return None
 
     def remember(self, run_id, details):
-        path = self._active_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(".active-run.tmp")
-        tmp.write_text(json.dumps({"run_id": run_id, **details}))
-        os.replace(tmp, path)
+        _write_receipt(self._active_path, {"run_id": run_id, **details})
 
     def forget(self):
-        self._active_path.unlink(missing_ok=True)
+        _remove_receipt(self._active_path)
 
     def resume(self, active):
         try:
@@ -431,7 +470,7 @@ class Host:
         except ApiError as error:
             if error.status != 409:  # 409: the run already ended; the report is moot
                 raise
-        path.unlink()
+        _remove_receipt(path)
         return True
 
     def alive(self, name):
@@ -576,6 +615,9 @@ class NativeHost(Host):
         if session:
             receipt["native_session"] = session
         self.remember(run["id"], receipt)
+        record = self.record(name, run["id"])
+        if not record or record.get("state") != "live":
+            raise HerdrError("unsafe_adoption", "Native terminal changed before prompt delivery")
         try:
             sent = self.herdr.rpc(
                 "terminal.send",
@@ -611,6 +653,9 @@ class NativeHost(Host):
         if ready.get("status") != "idle" or ready.get("reason") != "status":
             raise HerdrError("not_ready", "Wait for native agent idle before cancellation prompt")
         self.remember(run_id, {**receipt, "cancel_delivery": "delivering"})
+        record = self.record(name, run_id)
+        if not record or record.get("state") != "live":
+            raise HerdrError("unsafe_adoption", "Native terminal changed before cancellation delivery")
         try:
             sent = self.herdr.rpc(
                 "terminal.send", terminal=record["address"], text=CANCEL.format(run_id=run_id), **{"if": "idle"}

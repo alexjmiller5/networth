@@ -573,7 +573,12 @@ deploys target his Cloudflare account.
   idle, and sends through the core with `if=idle`. It preserves auth/trust
   failures for review instead of spawning a fallback agent. Initial and cancel
   delivery phases persist in the existing receipt; uncertain acknowledgements
-  never replay. Known native conversation identities must match on adoption.
+  never replay. Receipt commits sync the file before replacement and the parent
+  directory afterward (including Darwin full sync); commit failures stop launch
+  or delivery. Known native conversation identities must match on adoption and
+  immediately before delivery after readiness waits. Core's atomic `if=idle`
+  guard does not guard conversation identity; the final read/send interval is
+  not an atomic identity guarantee.
   Only existing public API detail fields are reported; native terminal addresses
   remain in the host receipt rather than fabricated TUI tab/pane IDs. Only the
   caller's site URL and report state directory reach the agent environment;
