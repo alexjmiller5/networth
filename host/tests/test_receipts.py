@@ -124,6 +124,7 @@ def test_darwin_fullsync_failure_blocks_launch(tmp_path, monkeypatch):
 
     host, core = make_host(tmp_path)
     monkeypatch.setattr(cli.sys, "platform", "darwin")
+    monkeypatch.setattr(fcntl, "F_FULLFSYNC", 51, raising=False)
 
     def fail(fd, operation):
         assert operation == fcntl.F_FULLFSYNC
